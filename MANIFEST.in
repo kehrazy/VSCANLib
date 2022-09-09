@@ -1,0 +1,5 @@
+recursive-include Linux\ *.so
+recursive-include Linux_x86-64\ *.so
+recursive-include Win32\ *.dll
+recursive-include Win64\ *.dll
+include *.pth
