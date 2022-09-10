@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*- #
 import ctypes
+import sys
 import time
+import enum
+
 
 from load_lib import vs_can_api
 
@@ -276,6 +279,21 @@ VSCAN_Read.restype = None
 
 #VOID VSCAN_GetErrorString(VSCAN_STATUS Status, CHAR *String, DWORD MaxLen);
 
+class VSCAN_MESSAGE_PARAMETERS(enum.Enum):
+    MEM = 0
+    SPI = 1
+    I2C = 2
+    ADC = 3
+    SYS = 4
+    PIN = 5
+    WORD = 6
+
+
+class VSCAN_MESSAGE_FUNCTIONS(enum.Enum):
+    READ = 0
+    WRITE = 1
+    SET = 2
+    RESET = 3
 
 # Own VSCAN_Exception class
 class VSCANException(Exception):
@@ -291,6 +309,8 @@ class VSCAN():
         status = VSCAN_Open(ctypes.c_char_p(port_com.encode('utf-8')), mode)
         if status < 0:
             raise VSCANException("<Error> Can't open CAN: status = {}({})".format(status, self.get_error_string(status)))
+
+        print('CAN device opened.')
         return status
 
     # Close CAN device. Ur Cap.
@@ -337,12 +357,13 @@ class VSCAN():
         if not data_size:
             data_size = len(data)
             if data_size > 8:
-                raise VSCANException("<Error> Data size == {} > 8. Not valid for CAN".format(data_size))
+                raise VSCANException(f"<Error> Data size == {data_size} > 8. Not valid for CAN")
         mes.Size = data_size
         for i in range(data_size):
             mes.Data[i] = data[i]
         mes.Flags = flags
         mes.Timestamp = timestamp
+        print(mes)
         return mes                 #self.write_mes(mes, flush)
 
     # Write proxy. Can message forms inside function
@@ -408,6 +429,19 @@ class VSCAN():
         mes = test_mes[0]
         print("status = {}, Readed = {}".format(status, Readed.value))
         return mes
+
+    def form_message(function: VSCAN_MESSAGE_FUNCTIONS, parameter: VSCAN_MESSAGE_PARAMETERS, address: str):
+        if (len(address.split(' ')) != 4):
+            raise ValueError('[form_message] address should be 4 bytes long!')
+
+        def form_byte(func, param) -> int:  # i.fedenko - непитоновский метод получения hex инструкции. пофиг?
+            # в целом, можно обойтись без int(ляляля.value()), но мне нравится как выглядит вызов функции с Enum.
+            return int("%X\n" % (int(func.value) + int(param.value) << 4))
+
+        byte = form_byte(function, parameter)
+        message = str(
+            f'{byte} {address}')  # мне не нравится как формируется сообщение, оно должно когда нибудь сломаться. переделать.
+        print(f'function: {function}\nparameter: {parameter}\nmessage: {message}')
 
     def write_test_many(self):
         """
@@ -480,7 +514,7 @@ def test_data_transmit():
 
     counter = 0
 
-    TEST_LENGTH = 10
+    TEST_LENGTH = 1000
     for i in range(0, TEST_LENGTH):
         DLC = (i % 8 + 1) & 0xFF
         Id = (i % 8 + i % 0xFF) & 0xFF
