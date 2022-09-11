@@ -1,16 +1,14 @@
 # -*- coding: utf-8 -*- #
 import ctypes
-import sys
 import time
-import enum
-
-
+from enum import Enum
+import string
 from load_lib import vs_can_api
 
-#port_ip = "10.7.6.70:2001"
+# port_ip = "10.7.6.70:2001"
 port_ip = "192.168.254.254:2001"
 
-#vs_can_api = ctypes.cdll.LoadLibrary(r"E:\WORK\Repository\Megapolis\PO_CAN_LIBRARY\Win64\vs_can_api.dll")
+# vs_can_api = ctypes.cdll.LoadLibrary(r"E:\WORK\Repository\Megapolis\PO_CAN_LIBRARY\Win64\vs_can_api.dll")
 
 DWORD = ctypes.c_uint32
 
@@ -20,13 +18,13 @@ VSCAN_STATUS = ctypes.c_int
 VSCAN_FIRST_FOUND = 0
 
 # Debug Mode
-VSCAN_DEBUG_MODE_CONSOLE = 1  #define VSCAN_DEBUG_MODE_CONSOLE        (void*)1
-VSCAN_DEBUG_MODE_FILE = 2  #define VSCAN_DEBUG_MODE_FILE               (void*)2
+VSCAN_DEBUG_MODE_CONSOLE = 1  # define VSCAN_DEBUG_MODE_CONSOLE        (void*)1
+VSCAN_DEBUG_MODE_FILE = 2  # define VSCAN_DEBUG_MODE_FILE               (void*)2
 # Debug Level
-VSCAN_DEBUG_NONE = 0  #define VSCAN_DEBUG_NONE                        (void*)0
-VSCAN_DEBUG_LOW = -1  #define VSCAN_DEBUG_LOW                         (void*)-1
-VSCAN_DEBUG_MID = 51  #define VSCAN_DEBUG_MID                         (void*)-51
-VSCAN_DEBUG_HIGH = -101  #define VSCAN_DEBUG_HIGH                        (void*)-101
+VSCAN_DEBUG_NONE = 0  # define VSCAN_DEBUG_NONE                        (void*)0
+VSCAN_DEBUG_LOW = -1  # define VSCAN_DEBUG_LOW                         (void*)-1
+VSCAN_DEBUG_MID = 51  # define VSCAN_DEBUG_MID                         (void*)-51
+VSCAN_DEBUG_HIGH = -101  # define VSCAN_DEBUG_HIGH                        (void*)-101
 
 # Status / Errors
 VSCAN_ERR_OK = 0
@@ -57,8 +55,8 @@ VSCAN_SPEED_125K = 4
 VSCAN_SPEED_100K = 3
 VSCAN_SPEED_50K = 2
 VSCAN_SPEED_20K = 1
-#// generally not possible with the TJA1050
-#//#define VSCAN_SPEED_10K               (void*)0
+# // generally not possible with the TJA1050
+# //#define VSCAN_SPEED_10K               (void*)0
 
 # Device Types
 VSCAN_HWTYPE_UNKNOWN = 0
@@ -137,7 +135,7 @@ class VSCAN_MSG(ctypes.Structure):
     _fields_ = [("Id", ctypes.c_uint32), ("Size", ctypes.c_uint8), ("Data", ctypes.c_uint8 * 8),
                 ("Flags", ctypes.c_uint8), ("Timestamp", ctypes.c_uint16)]
 
-    def __repr__(self):    # Print CAN message content
+    def __repr__(self):  # Print CAN message content
         return (
             "Id = {:08X}, Size = {}, Flags = {}, Timestamp = {}, Data = [{}]".format(
                 self.Id, self.Size, self.Flags, self.Timestamp, ", ".join("{:02X}".format(num) for num in self.Data)
@@ -191,6 +189,7 @@ typedef struct
 class VSCAN_API_VERSION(ctypes.Structure):
     _fields_ = [("Major", ctypes.c_int8), ("Minor", ctypes.c_int8), ("SubMinor", ctypes.c_int8)]
 
+
 '''
 // API Version Structure
 typedef struct
@@ -220,56 +219,56 @@ typedef struct
 } VSCAN_FILTER;
 '''
 
-#// If the function succeeds, the return value is greater zero (handle)
-#// If the function fails, the return value is one of VSCAN_STATUS
+# // If the function succeeds, the return value is greater zero (handle)
+# // If the function fails, the return value is one of VSCAN_STATUS
 VSCAN_Open = vs_can_api.VSCAN_Open
 VSCAN_Open.argtypes = [ctypes.c_char_p, ctypes.c_uint32]
 VSCAN_Open.restype = VSCAN_HANDLE
-#// If the function succeeds, the return value is greater zero (handle)
-#// If the function fails, the return value is one of VSCAN_STATUS
-#VSCAN_HANDLE VSCAN_Open(CHAR *SerialNrORComPortORNet, DWORD Mode);
-#// The return value is one of VSCAN_STATUS
+# // If the function succeeds, the return value is greater zero (handle)
+# // If the function fails, the return value is one of VSCAN_STATUS
+# VSCAN_HANDLE VSCAN_Open(CHAR *SerialNrORComPortORNet, DWORD Mode);
+# // The return value is one of VSCAN_STATUS
 
 VSCAN_Close = vs_can_api.VSCAN_Close
 VSCAN_Close.argtypes = [VSCAN_HANDLE]
 VSCAN_Close.restype = VSCAN_STATUS
-#// The return value is one of VSCAN_STATUS
-#VSCAN_STATUS VSCAN_Close(VSCAN_HANDLE Handle);
-#// The return value is one of VSCAN_STATUS
+# // The return value is one of VSCAN_STATUS
+# VSCAN_STATUS VSCAN_Close(VSCAN_HANDLE Handle);
+# // The return value is one of VSCAN_STATUS
 
-#// The return value is one of VSCAN_STATUS
+# // The return value is one of VSCAN_STATUS
 VSCAN_Ioctl = vs_can_api.VSCAN_Ioctl
 VSCAN_Ioctl.argtypes = [VSCAN_HANDLE, ctypes.c_uint32, ctypes.c_void_p]
 VSCAN_Ioctl.restype = VSCAN_STATUS
-#VSCAN_STATUS VSCAN_Ioctl(VSCAN_HANDLE Handle, DWORD Ioctl, VOID *Param);
+# VSCAN_STATUS VSCAN_Ioctl(VSCAN_HANDLE Handle, DWORD Ioctl, VOID *Param);
 
-#// The return value is one of VSCAN_STATUS
+# // The return value is one of VSCAN_STATUS
 VSCAN_Flush = vs_can_api.VSCAN_Flush
 VSCAN_Flush.argtypes = [VSCAN_HANDLE]
 VSCAN_Flush.restype = VSCAN_STATUS
-#VSCAN_STATUS VSCAN_Flush(VSCAN_HANDLE Handle);
+# VSCAN_STATUS VSCAN_Flush(VSCAN_HANDLE Handle);
 
-#// The return value is one of VSCAN_STATUS
+# // The return value is one of VSCAN_STATUS
 VSCAN_Write = vs_can_api.VSCAN_Write
 VSCAN_Write.argtypes = [VSCAN_HANDLE, ctypes.POINTER(VSCAN_MSG), ctypes.c_uint32, ctypes.POINTER(DWORD)]
 VSCAN_Write.restype = VSCAN_STATUS
-#VSCAN_STATUS VSCAN_Write(VSCAN_HANDLE Handle, VSCAN_MSG *Buf, DWORD Size, DWORD *Written);
+# VSCAN_STATUS VSCAN_Write(VSCAN_HANDLE Handle, VSCAN_MSG *Buf, DWORD Size, DWORD *Written);
 
-#// The return value is one of VSCAN_STATUS
+# // The return value is one of VSCAN_STATUS
 VSCAN_Read = vs_can_api.VSCAN_Read
 VSCAN_Read.argtypes = [VSCAN_HANDLE, ctypes.POINTER(VSCAN_MSG), ctypes.c_uint32, ctypes.POINTER(DWORD)]
 VSCAN_Read.restype = VSCAN_STATUS
-#VSCAN_STATUS VSCAN_Read(VSCAN_HANDLE Handle, VSCAN_MSG *Buf, DWORD Size, DWORD *Read);
+# VSCAN_STATUS VSCAN_Read(VSCAN_HANDLE Handle, VSCAN_MSG *Buf, DWORD Size, DWORD *Read);
 
-#// The return value is one of VSCAN_STATUS
-#don't implemented in Python
-#ifdef WIN32
-#VSCAN_STATUS VSCAN_SetRcvEvent(VSCAN_HANDLE Handle, HANDLE Event);
-#else
-#VSCAN_STATUS VSCAN_SetRcvEvent(VSCAN_HANDLE Handle, sem_t *Event);
+# // The return value is one of VSCAN_STATUS
+# don't implemented in Python
+# ifdef WIN32
+# VSCAN_STATUS VSCAN_SetRcvEvent(VSCAN_HANDLE Handle, HANDLE Event);
+# else
+# VSCAN_STATUS VSCAN_SetRcvEvent(VSCAN_HANDLE Handle, sem_t *Event);
 ##endif
 
-#// No return value for this function
+# // No return value for this function
 VSCAN_GET_ERROR_MAX_STRINGSIZE = 255
 VSCAN_GetErrorString = vs_can_api.VSCAN_GetErrorString
 VSCAN_GetErrorString.argtypes = [
@@ -277,9 +276,15 @@ VSCAN_GetErrorString.argtypes = [
 ]
 VSCAN_Read.restype = None
 
-#VOID VSCAN_GetErrorString(VSCAN_STATUS Status, CHAR *String, DWORD MaxLen);
 
-class VSCAN_MESSAGE_PARAMETERS(enum.Enum):
+# VOID VSCAN_GetErrorString(VSCAN_STATUS Status, CHAR *String, DWORD MaxLen);
+
+
+# class VSCAN_MessageParameters:
+#     MEM, SPI, I2C, ADC, SYS, PIN, WORD = range(6)
+
+
+class VSCAN_MESSAGE_PARAMETERS(Enum):
     MEM = 0
     SPI = 1
     I2C = 2
@@ -288,33 +293,45 @@ class VSCAN_MESSAGE_PARAMETERS(enum.Enum):
     PIN = 5
     WORD = 6
 
-class VSCAN_MESSAGE_FUNCTIONS(enum.Enum):
+
+class VSCAN_MESSAGE_FUNCTIONS(Enum):
     READ = 0
     WRITE = 1
     SET = 2
     RESET = 3
 
+# возможные сочетания фнукций и параметров
+ALLOWED_PARAM_DICT = {VSCAN_MESSAGE_FUNCTIONS.READ: [param for param in VSCAN_MESSAGE_PARAMETERS],
+                              VSCAN_MESSAGE_FUNCTIONS.WRITE: [VSCAN_MESSAGE_PARAMETERS.MEM,
+                                                              VSCAN_MESSAGE_PARAMETERS.I2C,
+                                                              VSCAN_MESSAGE_PARAMETERS.SPI],
+                              VSCAN_MESSAGE_FUNCTIONS.SET: [VSCAN_MESSAGE_PARAMETERS.PIN],
+                              VSCAN_MESSAGE_FUNCTIONS.RESET: [VSCAN_MESSAGE_PARAMETERS.PIN]}
+
+
 # Own VSCAN_Exception class
 class VSCANException(Exception):
     pass
 
+
 class VSCAN():
     def __init__(self, port_com, mode, can_speed):
-        self.can_descr = VSCAN_ERR_OK#self.open(port_com, mode)
+        self.can_descr = VSCAN_ERR_OK  # self.open(port_com, mode)
         self.set_speed(can_speed)
 
     # Open CAN Device
     def open(self, port_com, mode):
-        status = 0#VSCAN_Open(ctypes.c_char_p(port_com.encode('utf-8')), mode)
+        status = 0  # VSCAN_Open(ctypes.c_char_p(port_com.encode('utf-8')), mode)
         if status < 0:
-            raise VSCANException("<Error> Can't open CAN: status = {}({})".format(status, self.get_error_string(status)))
+            raise VSCANException(
+                "<Error> Can't open CAN: status = {}({})".format(status, self.get_error_string(status)))
 
         print('CAN device opened.')
         return status
 
     # Close CAN device. Ur Cap.
     def close(self):
-        status = VSCAN_ERR_OK#VSCAN_Close(self.can_descr)
+        status = VSCAN_ERR_OK  # VSCAN_Close(self.can_descr)
         if status != VSCAN_ERR_OK:
             raise VSCANException("<Error> close: status = {}({})".format(status, self.get_error_string(status)))
         return status
@@ -329,7 +346,7 @@ class VSCAN():
 
     # Set CAN Speed
     def set_speed(self, can_speed):
-        status = VSCAN_ERR_OK#VSCAN_Ioctl(self.can_descr, VSCAN_IOCTL_SET_SPEED, can_speed)
+        status = VSCAN_ERR_OK  # VSCAN_Ioctl(self.can_descr, VSCAN_IOCTL_SET_SPEED, can_speed)
         if status != VSCAN_ERR_OK:
             raise VSCANException("<Error> set_speed: status = {}({})".format(status, self.get_error_string(status)))
         return
@@ -337,7 +354,7 @@ class VSCAN():
     # Write CAN message
     def write_mes(self, mes, flush=True):
         Written = DWORD(0)
-        status = VSCAN_ERR_OK#VSCAN_Write(self.can_descr, ctypes.pointer(mes), 1, ctypes.pointer(Written))
+        status = VSCAN_ERR_OK  # VSCAN_Write(self.can_descr, ctypes.pointer(mes), 1, ctypes.pointer(Written))
         print("can_write_mes status = {}, Written = {}".format(status, Written.value))
         if status != VSCAN_ERR_OK:
             raise VSCANException("<Error> write_mes: status = {}({})".format(status, self.get_error_string(status)))
@@ -349,8 +366,6 @@ class VSCAN():
         if flush:
             self.flush()
         return Written.value
-
-
 
     def form_message(self, frame_id, data, data_size=None, flags=VSCAN_FLAGS_EXTENDED, timestamp=0):
         mes = VSCAN_MSG()
@@ -365,16 +380,16 @@ class VSCAN():
         mes.Flags = flags
         mes.Timestamp = timestamp
         print(mes)
-        return mes                 #self.write_mes(mes, flush)
+        return mes  # self.write_mes(mes, flush)
 
     # Write proxy. Can message forms inside function
     def write(self, frame_id, data, data_size=None, flags=VSCAN_FLAGS_EXTENDED, timestamp=0, flush=True):
         mes = VSCAN_MSG()
         mes.Id = frame_id
         if not data_size:
-             data_size = len(data)
-             if data_size > 8:
-                 raise VSCANException("<Error> Data size == {} > 8. Not valid for CAN".format(data_size))
+            data_size = len(data)
+            if data_size > 8:
+                raise VSCANException("<Error> Data size == {} > 8. Not valid for CAN".format(data_size))
         mes.Size = data_size
         for i in range(data_size):
             mes.Data[i] = data[i]
@@ -431,8 +446,6 @@ class VSCAN():
         print("status = {}, Readed = {}".format(status, Readed.value))
         return mes
 
-
-
     def write_test_many(self):
         """
         class VSCAN_MSG(ctypes.Structure):
@@ -454,53 +467,84 @@ class VSCAN():
         print("status = {}, Written = {}".format(status, Written.value))
         return status
 
-    def function_parser(self):
-        request_length = len(self.request.split(' '))
-        def handle_length(accepted_args: list):
-            if request_length not in accepted_args:
-                raise VSCANException(f'Invalid {self.function.name} request!')
+    # def function_parser(self):
+    #     def handle_length(accepted_args: list):
+    #         request_length = len(self.request.split(' '))
+    #         if request_length not in accepted_args:
+    #             raise VSCANException(f'Invalid {self.function.name} request!')
+    #
+    #     def handle_parameters(accepted_args: list):
+    #         if (self.parameter not in accepted_args):
+    #             raise VSCANException(f'Invalid {self.function.name} request! {self.function.name}:{(self.parameter.name)} is not supported!')
+    #
+    #     match self.function:
+    #         case VSCAN_MESSAGE_FUNCTIONS.WRITE:
+    #             # Запись доступна только черещ MEM, SPI и I2C интерфейсы.
+    #             handle_parameters([VSCAN_MESSAGE_PARAMETERS.MEM, VSCAN_MESSAGE_PARAMETERS.SPI, VSCAN_MESSAGE_PARAMETERS.I2C])
+    #             handle_length([6, 7])
+    #             match self.parameter:
+    #                 case VSCAN_MESSAGE_PARAMETERS.MEM:
+    #                     print('write:mem')
+    #                 case VSCAN_MESSAGE_PARAMETERS.SPI:
+    #                     print('write:spi')
+    #                 case VSCAN_MESSAGE_PARAMETERS.I2C:
+    #                     print('write:i2c')
+    #         case VSCAN_MESSAGE_FUNCTIONS.READ:
+    #             handle_length([4])
+    #
+    #         case VSCAN_MESSAGE_FUNCTIONS.SET:
+    #             handle_parameters([VSCAN_MESSAGE_PARAMETERS.PIN])
+    #             handle_length([1])
+    #
+    #         case VSCAN_MESSAGE_FUNCTIONS.RESET:
+    #             handle_parameters([VSCAN_MESSAGE_PARAMETERS.PIN])
+    #             handle_length([1])
 
+    def verify_instruction(self):
+        param_dict = ALLOWED_PARAM_DICT
+        if self.parameter not in param_dict[self.function]:
+            raise VSCANException(f'<Error> instruction_parser: cant request {self.parameter.name} by {self.function.name}')
+
+        # убедимся, что каждый байт инструкции - hex от 00 до FF.
+        def is_hex(byte):
+            return set(byte).issubset(string.hexdigits)
+
+        for byte in self.request.split(' '):
+            if not is_hex(byte) or len(byte) != 2:
+                raise VSCANException(f'<Error> Invalid request! {byte} is not a hex byte!')
+
+    def handle_instruction(self):
+        self.verify_instruction() # инструкция корректна.
         match self.function:
-            case VSCAN_MESSAGE_FUNCTIONS.WRITE:
-                # Запись доступна только черещ MEM, SPI и I2C интерфейсы.
-                if (self.parameter not in [VSCAN_MESSAGE_PARAMETERS.MEM, VSCAN_MESSAGE_PARAMETERS.SPI, VSCAN_MESSAGE_PARAMETERS.I2C]):
-                    raise VSCANException(f'<Error> Invalid write request!')
-                handle_length([5, 6])
-
             case VSCAN_MESSAGE_FUNCTIONS.READ:
-                handle_length([3])
+                self.expected_return_bytes = 4 # @doc: Возвращаемое число равно последовательности 4 байт данных младшим байтом вперёд.
+            case VSCAN_MESSAGE_FUNCTIONS.WRITE:
+                match self.parameter:
+                    case VSCAN_MESSAGE_PARAMETERS.MEM:
+                        self.expected_return_bytes = 1 # @doc: Возвращается байт выполненной команды.
+                    case VSCAN_MESSAGE_PARAMETERS.SPI:
+                        self.expected_return_bytes = 2 # @doc: Возвращаются два байта данных.
+                    case VSCAN_MESSAGE_PARAMETERS.I2C:
+                        self.expected_return_bytes = 1 # @doc: При записи возвращается байт выполненной команды, при чтении возвращается последовательность запрошенных данных
 
-            case VSCAN_MESSAGE_FUNCTIONS.SET:
-                if (self.parameter != VSCAN_MESSAGE_PARAMETERS.PIN):
-                    raise VSCANException(f'<Error> Invalid set request!')
-                handle_length([1])
 
-            case VSCAN_MESSAGE_FUNCTIONS.RESET:
-                if (self.parameter != VSCAN_MESSAGE_PARAMETERS.PIN):
-                    raise VSCANException('<Error> Invalid reset request!')
-                handle_length([1])
 
-    #def form_data(function: VSCAN_MESSAGE_FUNCTIONS, parameter: VSCAN_MESSAGE_PARAMETERS, request: str):
-    def form_data(self, function: VSCAN_MESSAGE_FUNCTIONS, parameter: VSCAN_MESSAGE_PARAMETERS,  request: str):
-        if request is None:
+    # def form_data(function: VSCAN_MESSAGE_FUNCTIONS, parameter: VSCAN_MESSAGE_PARAMETERS, request: str):
+    def form_data(self, function: VSCAN_MESSAGE_FUNCTIONS, parameter: VSCAN_MESSAGE_PARAMETERS, request: str):
+        if not request:
             raise VSCANException('<Error> form_address: did not provide a request!')
 
         self.function = function
         self.parameter = parameter
         self.request = request
-        # параметры адекватны, формируем инструкцию
-        def form_instruction_byte(func, param):  # полный бред.
-            #return int("%X" % (int(func.value) + int(param.value) << 4)) по определению байт = функция + параметр << 4, это будет правильно
-            return int(str(param.value) + str(func.value)) # но на самом деле нужно так?
-            # потому что ниже пишется, что запрос на запись - это 01, но по определнию - 60.
 
-        self.message = str(f'{form_instruction_byte(self.function, self.parameter)} {request}')  # переделать.
 
-        print(f'instruction: {form_instruction_byte(self.function, self.parameter)} = str({self.function.name}) + str({self.parameter.name})')
-        print(f'    address: {request}')
-        print(f'    message: {self.message}')
+        def form_instruction_byte(func, param):
+            # return int("%X" % (int(func.value) + int(param.value) << 4)) по документации: байт = функция + параметр << 4
+            return (str(param.value) + str(func.value))  # но на самом деле нужно так?
 
-        self.function_parser()
+        self.message = (f'{form_instruction_byte(self.function, self.parameter)} {request}')  # переделать.
+        self.instruction_parser()
         return self.message
 
 
@@ -511,38 +555,39 @@ def test_get_error_string():
 
 
 def can_self_test():
-
-    #test_get_error_string()
+    # test_get_error_string()
 
     version = VSCAN.get_api_version()
     print("VSCAN-API Version {}.{}.{}".format(version.Major, version.Minor, version.SubMinor))
 
     port = port_ip
     can_bus = VSCAN(port, VSCAN_MODE_SELF_RECEPTION, VSCAN_SPEED_1M)
-    data = can_bus.form_data(VSCAN_MESSAGE_FUNCTIONS.RESET, VSCAN_MESSAGE_PARAMETERS.PIN, '1A')
+    data = can_bus.form_data(VSCAN_MESSAGE_FUNCTIONS.READ, VSCAN_MESSAGE_PARAMETERS.MEM, 'DE AD BE EF')
+    data = can_bus.form_data(VSCAN_MESSAGE_FUNCTIONS.WRITE, VSCAN_MESSAGE_PARAMETERS.I2C, '01 02 03 04 05 06')
 
     # Write some messages
-    #can_bus.write(frame_id=0xFF, data=[1, 2, 3, 4, 5, 8])  # noqa: WPS432
+    # can_bus.write(frame_id=0xFF, data=[1, 2, 3, 4, 5, 8])  # noqa: WPS432
 
     time.sleep(0.5)  # Дождаться получения сообщения
 
-   # mes = can_bus.read_mes()
-    #print(mes)
+    # mes = can_bus.read_mes()
+    # print(mes)
 
     # Write some messages
-    #can_bus.write(frame_id=0xFF, data=[1, 2, 3])  # noqa: WPS432
+    # can_bus.write(frame_id=0xFF, data=[1, 2, 3])  # noqa: WPS432
 
     time.sleep(0.5)  # Дождаться получения сообщения
 
-    #mes = can_bus.read()
-    #print(mes)
-
+    # mes = can_bus.read()
+    # print(mes)
 
     status = can_bus.close()
-    #if status < 0:
-        #print("<Error> Close: status = {}".format(status))
-   # else:
-       # print("<Success> Close: status = {}".format(status))
+    # if status < 0:
+    # print("<Error> Close: status = {}".format(status))
+
+
+# else:
+# print("<Success> Close: status = {}".format(status))
 
 
 def test_data_transmit():
