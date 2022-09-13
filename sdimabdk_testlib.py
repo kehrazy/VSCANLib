@@ -1,7 +1,6 @@
 """ used: string.hexdigits """
 import string
 from enum import Enum
-from typing import Dict
 
 from vs_can_lib import VSCANException
 
@@ -79,7 +78,7 @@ class VSCANMessage:
         self.request = request
         self.message = self.form_message()
         self.is_valid_message = self.verify_message
-        self.expected_response_length = self.get_response_length()
+
     def __str__(self):
         return f"{'-'*10}\n" \
                f'function: {self.function}\n' \
@@ -87,7 +86,7 @@ class VSCANMessage:
                f'request: {self.request}\n' \
                f'message: {self.message}\n' \
                f'is_valid_message: {self.is_valid_message}\n' \
-               f'expected_response_length: {self.expected_response_length}' \
+               #f'expected_response_length: {self.expected_response_length}' \
 
 def check_test_state_arinc825():
     test_msg = VSCANMessage(VSCANMessage.Functions.WRITE, VSCANMessage.Parameters.MEM, 'DE AD BE EF')
