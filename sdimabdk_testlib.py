@@ -1,6 +1,7 @@
 """ used: string.hexdigits """
 import string
 from enum import Enum
+import pprint
 
 from vs_can_lib import VSCANException
 
@@ -93,15 +94,7 @@ class VSCANMessage:
 
 class VSCANId:
     def __init__(self):
-        self.hex_str = ''
-        self.list = [None] * 32
-        self.rci = self.list[1] = None
-        self.server_fid = 121
-        self.lcc = 6
-        self.client_fid = 121
-        self.s = 1
-        self.sid = VSCANMessage(VSCANMessage.Functions.WRITE, VSCANMessage.Parameters.MEM, 'DE AD BE EF')
-        self.l = 1
+        self.message_id = [''] * 32
 
 
 def check_vscan_msg():
@@ -111,6 +104,9 @@ def check_vscan_msg():
     invalid_msg = VSCANMessage(VSCANMessage.Functions.SET, VSCANMessage.Parameters.PIN, '01 02 03')
     print(invalid_msg)
 
+def check_vscan_id():
+    test_id = VSCANId()
+    pprint.pprint(test_id.message_id, compact=True, underscore_numbers=True, indent=2)
 
 if __name__ == '__main__':
-    check_vscan_msg()
+    check_vscan_id()
