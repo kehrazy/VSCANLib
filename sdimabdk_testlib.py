@@ -54,7 +54,7 @@ class VSCANMessage:
 
         for byte in self.message.split(' '):
             if not is_hex(byte) or len(byte) != 2:
-                raise VSCANException(f'<Error> Invalid request! {byte} is not a hex byte!')
+                raise VSCANException(f'<Error> Invalid request! {byte} is not a proper hex byte!')
 
         return True
 
@@ -88,7 +88,23 @@ class VSCANMessage:
                f'is_valid_message: {self.is_valid_message}\n' \
                #f'expected_response_length: {self.expected_response_length}' \
 
-def check_test_state_arinc825():
+    def __repr__(self):
+        return self.message
+
+class VSCANId:
+    def __init__(self):
+        self.hex_str = ''
+        self.list = [None] * 32
+        self.rci = self.list[1] = None
+        self.server_fid = 121
+        self.lcc = 6
+        self.client_fid = 121
+        self.s = 1
+        self.sid = VSCANMessage(VSCANMessage.Functions.WRITE, VSCANMessage.Parameters.MEM, 'DE AD BE EF')
+        self.l = 1
+
+
+def check_vscan_msg():
     test_msg = VSCANMessage(VSCANMessage.Functions.WRITE, VSCANMessage.Parameters.MEM, 'DE AD BE EF')
     print(test_msg)
 
@@ -97,4 +113,4 @@ def check_test_state_arinc825():
 
 
 if __name__ == '__main__':
-    check_test_state_arinc825()
+    check_vscan_msg()
