@@ -97,12 +97,13 @@ class VSCANMessage:
 
 class CAN:
     class RCI(Enum):
-        RCI_1 = 1
-        RCI_2 = 2
+        RCI_FIRST = 1
+        RCI_SECOND = 2
 
     class Status(Enum):
         LCC = 2  # #define STATUS_LCC    	  NOC_LCC
-        STATUS_FID = 120  # функция ПМУ
+        FID = 120  # функция ПМУ
+        TEST = 121
 
     class LCC(Enum):
         EEC = 0  # исключительное событие
@@ -129,6 +130,23 @@ class CAN:
         C_FID = 19
         LCC = 26
 
+    class MessageType(Enum):
+        CLIENT = 1
+        SERVER = 0
+
+    class LocalBus(object):
+        VALUE = 1  # только 1.
+
+        def __setattr__(self, *_):
+            pass
+
+    class Privacy(object):
+        VALUE = 1  # только 1.
+
+        def __setattr__(self, *_):
+            pass
+
+
 # LCC_MASK = (7 << CAN.ID_POS.LCC.value)
 # FID_MASK = 0x7F
 # RLP_MASK = (7 << CAN.ID_POS.P.value)
@@ -136,13 +154,16 @@ class CAN:
 
 
 class VSCANId:
+
+
+
     def __init__(self):
-        self.message_id = [''] * 9  # list of the message id
-        self.rci = self.message_id[0] = CAN.RCI.RCI_1.value  # rci. @doc: RCI_1 - 1, RCI_2 - 2
-        self.sid = self.message_id[1] = 1  # sid. @doc:
-        self.server_fid = self.message_id[2] = 121  # server_fid /
-        self.privacy = self.message_id[3] = 1  # privacy
-        self.local_bus = self.message_id[4] = 1  # local_bus
+        self.message_id = [None for _ in range(9)]  # list of the message id
+        self.rci = self.message_id[0] = bin(CAN.RCI.RCI_FIRST.value)  # rci. @doc: RCI_1 - 1, RCI_2 - 2
+        self.sid = self.message_id[1] = 1
+        self.server_fid = self.message_id[2] = CAN.Status.TEST.value  # 120 / 121 ?
+        self.privacy = self.message_id[3] = CAN.Privacy.VALUE
+        self.local_bus = self.message_id[4] = CAN.LocalBus.VALUE
         self.msg_type = self.message_id[5] = 1  # msg_type
         self.client_fid = self.message_id[6] = 121  # client_fid
         self.lcc = self.message_id[7] = CAN.LCC.TMC.value  # lcc
@@ -159,7 +180,8 @@ class VSCANId:
                f'Message type: {self.msg_type}\n' \
                f'Client FID: {self.client_fid}\n' \
                f'LCC: {self.lcc}\n' \
-               f'empty: {self.empty}\n'
+               f'Empty: {self.empty}\n'
+
 
 def check_vscan_msg():
     test_msg = VSCANMessage(VSCANMessage.Functions.WRITE, VSCANMessage.Parameters.MEM, 'DE AD BE EF')
