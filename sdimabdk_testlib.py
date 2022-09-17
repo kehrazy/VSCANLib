@@ -1,111 +1,128 @@
-""" used: string.hexdigits """
-import string
+"""
+VSCAN Interface for SD IMA BK.
+"""
+
+from typing import Type, Any, Optional, Tuple
 from enum import Enum
-import pprint
-import ctypes
+import inspect
+from contextlib import contextmanager
 
-from vs_can_lib import VSCANException
+import copy
+import sys
+import io
+import time
+import logging
+
+if sys.version_info >= (3, 9):
+    from collections.abc import Generator
+else:
+    from typing import Generator
+
+logger = logging.getLogger(__name__)
+
+try:
+    import vs_can_lib
+except ImportError:
+    logger.warning(
+        "You can't use this back-end without the vs_can_lib module."
+    )
+    serial = None
+
+class SDIMABDKError(Exception):
+    """Base class for all CAN related exceptions.
+    If specified, the error code is automatically appended to the message:
+    >>> # With an error code (it also works with a specific error):
+    >>> error = SDIMABDKError(message="Failed to do the thing", error_code=42)
+    >>> str(error)
+    'Failed to do the thing [Error Code 42]'
+    >>>
+    >>> # Missing the error code:
+    >>> plain_error = SDIMABDKError(message="Something went wrong ...")
+    >>> str(plain_error)
+    'Something went wrong ...'
+    :param error_code:
+        An optional error code to narrow down the cause of the fault
+    :arg error_code:
+        An optional error code to narrow down the cause of the fault
+    """
+
+    def __init__(
+        self,
+        message: str = "",
+        error_code: Optional[int] = None,
+    ) -> None:
+        self.error_code = error_code
+        super().__init__(
+            message if error_code is None else f"{message} [code: {error_code}]"
+        )
+
+class SDIMABDKOperationError(Exception):
+    """
+    Indicates that SDIMABDK encountered an error while operating.
+    """
+    pass
+
+@contextmanager
+def error_check(
+    error_message: Optional[str] = None,
+    exception_type: Type[SDIMABDKError] = SDIMABDKOperationError,
+) -> Generator[None, None, None]:
+    """Catches any exceptions and turns them into the new type while preserving the stack trace."""
+    try:
+        yield
+    except Exception as error:  # pylint: disable=broad-except
+        if error_message is None:
+            raise exception_type(str(error)) from error
+        else:
+            raise exception_type(error_message) from error
 
 
-class VSCANMessage:
-    class Parameters(Enum):
-        MEM = 0
-        SPI = 1
-        I2C = 2
-        ADC = 3
-        SYS = 4
-        PIN = 5
-        WORD = 6
 
-    class Functions(Enum):
-        READ = 0
-        WRITE = 1
-        SET = 2
-        RESET = 3
+class SDIMABDKBus:
+    """
+    SD IMA BK bus.
+    """
 
-    # возможные сочетания функций и параметров.
-    ftp_dict: dict[Functions, list[Parameters]] = {Functions.READ: list(Parameters),
-                                                   Functions.WRITE: [Parameters.MEM, Parameters.I2C, Parameters.SPI],
-                                                   Functions.SET: [Parameters.PIN],
-                                                   Functions.RESET: [Parameters.PIN]}
-    i2c_response = 0
+    # the message structure with the bit position and the amount of bits.
+    class __MESSAGE_STRUCTURE(Enum):
+        RCI = (0, 2)
+        SID = (1, 7)
+        S_FID = (2, 7)
+        P = (3, 1)
+        L = (4, 1)
+        S = (5, 1)
+        FID = (6, 7)
+        LCC = (7, 3)
+        UNK = (8, 3)
 
-    expected_response_length: dict[Functions, dict[Parameters, int]] = {
-        Functions.READ: {Parameters.MEM: 4,
-                         Parameters.SPI: 2,
-                         Parameters.I2C: i2c_response,
-                         Parameters.ADC: 5},
-        Functions.WRITE: {Parameters.MEM: 1,
-                          Parameters.SPI: 2,
-                          Parameters.I2C: 1,
-                          },
-        Functions.SET: {Parameters.PIN: 1}
+    _REPLY = 0
+    _REQUEST = 1
+
+    _FID_IDS = {
+        'MFC': 0,
+        'IMA': 15,
+        'TEST': 121,
+        'UTDS': 126,
+        'TTM': 127
     }
 
-    def get_response_length(self):
-        return (self.expected_response_length[self.function])[self.parameter]
+    _RCI_VALUES = {
+        'RCI_FIRST': 1,
+        'RCI_SECOND': 2,
+    }
 
-    @property
-    def verify_message(self) -> bool:
-        if self.parameter not in self.ftp_dict[self.function]:
-            raise VSCANException(f'<Error> verify_instruction: cant request {self.parameter} by {self.function}')
-
-        # убедимся, что каждый байт инструкции - hex от 00 до FF.
-        def is_hex(str_byte):
-            return set(str_byte).issubset(string.hexdigits)
-
-        for byte in self.message.split(' '):
-            if not is_hex(byte) or len(byte) != 2:
-                raise VSCANException(f'<Error> Invalid request! {byte} is not a proper hex byte!')
-
-        return True
-
-    def form_message(self) -> str:
-        if self.request:
-            def form_instruction_byte(func, param):
-                # byte =    hex(function)         +              hex(parameter << 4)
-                return str(int(f'{func.value:X}') + int(f'{int(bin(param.value << 4), 2):X}'))  # переписать
-                # убедиться, что в первом байте два чара
-
-            return str(f'{form_instruction_byte(self.function, self.parameter).zfill(2)} {self.request}')  # переделать.
-
-        # - Бэрримор, что у меня хлюпает в реквесте?
-        # - [None, ''], сэр!
-        # - [None, '']?! Что они там делают?!
-        # - Хлюпают, сэр...
-        raise VSCANException('<Error> form_data: invalid request!')
-
-    def __init__(self, function: Functions, parameter: Parameters, request: str):
-        self.function = function
-        self.parameter = parameter
-        self.request = request
-        self.message = self.form_message()
-        self.is_valid_message = self.verify_message
-
-    def __str__(self):
-        return f"{'-' * 10}\n" \
-               f'function: {self.function}\n' \
-               f'parameter: {self.parameter}\n' \
-               f'request: {self.request}\n' \
-               f'message: {self.message}\n' \
-               f'is_valid_message: {self.is_valid_message}\n' \
-            # f'expected_response_length: {self.expected_response_length}' \
-
-    def __repr__(self):
-        return self.message
+    _SID_VALUES = {
+        'REPLY': 0,
+        'REQUEST': 1,
+    }
 
 
-class CAN:
-    class RCI(Enum):
-        RCI_FIRST = 1
-        RCI_SECOND = 2
-
-    class Status(Enum):
+    class Status():
         LCC = 2  # #define STATUS_LCC    	  NOC_LCC
         FID = 120  # функция ПМУ
         TEST = 121
 
-    class LCC(Enum):
+    class LCC():
         EEC = 0  # исключительное событие
         NOC = 2  # нормальная операция
         NSC = 4  # сервис шины
@@ -113,13 +130,14 @@ class CAN:
         TMC = 6  # тестирование и поддержка
         FMC = 7  # канал миграции
 
-    class FID(Enum):
+    class FID():
         MFC = 0  # Multicast Function Code ID
         IMA = 15  # Integral Modular Avionics
+        TEST = 121
         UTDS = 126  # Upload Target or Download Source
         TTM = 127  # Temporary Test and Maintenance
 
-    class ID_POS(Enum):
+    class ID_POS():
         RCI = 0
         SID = 2
         S_FID = 9
@@ -130,71 +148,84 @@ class CAN:
         C_FID = 19
         LCC = 26
 
-    class MessageType(Enum):
+    class MessageType():
         CLIENT = 1
         SERVER = 0
 
-    class LocalBus(object):
-        VALUE = 1  # только 1.
+    class Privacy():
+        value = 1
 
-        def __setattr__(self, *_):
-            pass
+    class LocalBus():
+        value = 1
 
-    class Privacy(object):
-        VALUE = 1  # только 1.
-
-        def __setattr__(self, *_):
-            pass
-
-
-# LCC_MASK = (7 << CAN.ID_POS.LCC.value)
-# FID_MASK = 0x7F
-# RLP_MASK = (7 << CAN.ID_POS.P.value)
-# SLP_MASK = (3 << CAN.ID_POS.P.value)
-
-
-class VSCANId:
-
+    @staticmethod
+    def make_bits(
+            count: Optional[int] = 1,
+            value: Optional[Any] = None
+    ) -> bytes:
+        """
+        `make_bits` takes an integer `count` and a value and returns a list of `count` copies of `value`
+        :param count: The number of bits to make
+        :type count: Optional[int]
+        :param value: The value to be repeated
+        :type value: Optional[Any]
+        """
+        return bytes(value.to_bytes(count, byteorder='little'))
 
 
-    def __init__(self):
-        self.message_id = [None for _ in range(9)]  # list of the message id
-        self.rci = self.message_id[0] = bin(CAN.RCI.RCI_FIRST.value)  # rci. @doc: RCI_1 - 1, RCI_2 - 2
-        self.sid = self.message_id[1] = 1
-        self.server_fid = self.message_id[2] = CAN.Status.TEST.value  # 120 / 121 ?
-        self.privacy = self.message_id[3] = CAN.Privacy.VALUE
-        self.local_bus = self.message_id[4] = CAN.LocalBus.VALUE
-        self.msg_type = self.message_id[5] = 1  # msg_type
-        self.client_fid = self.message_id[6] = 121  # client_fid
-        self.lcc = self.message_id[7] = CAN.LCC.TMC.value  # lcc
-        self.empty = self.message_id[8] = ''  # ?
+    def __init__(
+            self,
+            rci: Optional[str] = None,
+            sid: Optional[str] = None,
+            s_fid: Optional[str] = None,
+            p: Optional[str] = None,
+            l: Optional[str] = None,
+            s: Optional[str] = None,
+            c_fid: Optional[str] = None,
+            lcc: Optional[str] = None,
+            *args: Any,
+    ) -> None:
+        """
+        :param str rci:
+             идентификатор резервирования канала
+        :param sid:
+            идентификатор модуля сервера
+        :param s_fid:
+            идентификатор функции сервера
+        :param p:
+            приватность, всегда 1
+        :param l:
+            локальная шина, всегда 1
+        :param s:
+            тип сообщения, клиент/запрос - 1, сервер/ответ - 0
+        :param c_fid:
+            идентификатор функции клиента.
+        :param lcc:
+            номер логического коммуникационного канала.
 
-    def __str__(self):
-        return f"{'-' * 10}\n" \
-               f'ID: {self.message_id}\n' \
-               f'RCI [0-1]: {self.rci}\n' \
-               f'SID [2-8]: {self.sid}\n' \
-               f'Server FID: {self.server_fid}\n' \
-               f'Privacy: {self.privacy}\n' \
-               f'Local bus: {self.local_bus}\n' \
-               f'Message type: {self.msg_type}\n' \
-               f'Client FID: {self.client_fid}\n' \
-               f'LCC: {self.lcc}\n' \
-               f'Empty: {self.empty}\n'
+        :raise ValueError: if any of the options are invalid
+        :raise VSCANError: API Error.
+
+        Leave initializer empty to make a test connection.
+        """
+        if len([x for x in locals().values()
+                if (not callable(x)) and
+                (not isinstance(x, SDIMABDKBus)) and
+                (x is not None)]) != len(args):
+
+                raise SDIMABDKOperationError('Arguments provided are None or not valid.')
+
+        if vs_can_lib is None:
+            raise ImportError('The VSCAN Library is not installed.')
 
 
-def check_vscan_msg():
-    test_msg = VSCANMessage(VSCANMessage.Functions.WRITE, VSCANMessage.Parameters.MEM, 'DE AD BE EF')
-    print(test_msg)
-
-    invalid_msg = VSCANMessage(VSCANMessage.Functions.SET, VSCANMessage.Parameters.PIN, '01 02 03')
-    print(invalid_msg)
 
 
-def check_vscan_id():
-    test_id = VSCANId()
-    print(test_id)
 
 
-if __name__ == '__main__':
-    check_vscan_id()
+
+
+
+
+
+SDIMABDKBus('1','2','3','4')
