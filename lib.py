@@ -8,7 +8,7 @@ port_ip = "10.7.6.70:2001"
 
 # port_ip = "192.168.254.254:2001"
 
-#vs_can_api = ctypes.cdll.LoadLibrary(r"E:\WORK\Repository\Megapolis\PO_CAN_LIBRARY\Win64\vs_can_api.dll")
+# vs_can_api = ctypes.cdll.LoadLibrary(r"E:\WORK\Repository\Megapolis\PO_CAN_LIBRARY\Win64\vs_can_api.dll")
 
 DWORD = ctypes.c_uint32
 
@@ -18,13 +18,13 @@ VSCAN_STATUS = ctypes.c_int
 VSCAN_FIRST_FOUND = 0
 
 # Debug Mode
-VSCAN_DEBUG_MODE_CONSOLE = 1  #define VSCAN_DEBUG_MODE_CONSOLE        (void*)1
-VSCAN_DEBUG_MODE_FILE = 2  #define VSCAN_DEBUG_MODE_FILE               (void*)2
+VSCAN_DEBUG_MODE_CONSOLE = 1  # define VSCAN_DEBUG_MODE_CONSOLE        (void*)1
+VSCAN_DEBUG_MODE_FILE = 2  # define VSCAN_DEBUG_MODE_FILE               (void*)2
 # Debug Level
-VSCAN_DEBUG_NONE = 0  #define VSCAN_DEBUG_NONE                        (void*)0
-VSCAN_DEBUG_LOW = -1  #define VSCAN_DEBUG_LOW                         (void*)-1
-VSCAN_DEBUG_MID = 51  #define VSCAN_DEBUG_MID                         (void*)-51
-VSCAN_DEBUG_HIGH = -101  #define VSCAN_DEBUG_HIGH                        (void*)-101
+VSCAN_DEBUG_NONE = 0  # define VSCAN_DEBUG_NONE                        (void*)0
+VSCAN_DEBUG_LOW = -1  # define VSCAN_DEBUG_LOW                         (void*)-1
+VSCAN_DEBUG_MID = 51  # define VSCAN_DEBUG_MID                         (void*)-51
+VSCAN_DEBUG_HIGH = -101  # define VSCAN_DEBUG_HIGH                        (void*)-101
 
 # Status / Errors
 VSCAN_ERR_OK = 0
@@ -55,8 +55,8 @@ VSCAN_SPEED_125K = 4
 VSCAN_SPEED_100K = 3
 VSCAN_SPEED_50K = 2
 VSCAN_SPEED_20K = 1
-#// generally not possible with the TJA1050
-#//#define VSCAN_SPEED_10K               (void*)0
+# // generally not possible with the TJA1050
+# //#define VSCAN_SPEED_10K               (void*)0
 
 # Device Types
 VSCAN_HWTYPE_UNKNOWN = 0
@@ -112,7 +112,6 @@ VSCAN_FLAGS_REMOTE = (1 << 2)
 VSCAN_FLAGS_TIMESTAMP = (1 << 3)
 
 
-
 # Hardware Parameter Structure
 class VSCAN_HWPARAM(ctypes.Structure):
     _fields_ = [("SerialNr", ctypes.c_uint32), ("HwVersion", ctypes.c_uint8), ("SwVersion", ctypes.c_uint8),
@@ -136,7 +135,7 @@ class VSCAN_MSG(ctypes.Structure):
     _fields_ = [("Id", ctypes.c_uint32), ("Size", ctypes.c_uint8), ("Data", ctypes.c_uint8 * 8),
                 ("Flags", ctypes.c_uint8), ("Timestamp", ctypes.c_uint16)]
 
-    def __repr__(self):    # Print CAN message content
+    def __repr__(self):  # Print CAN message content
         return (
             "Id = {:08X}, Size = {}, Flags = {}, Timestamp = {}, Data = [{}]".format(
                 self.Id, self.Size, self.Flags, self.Timestamp, ", ".join("{:02X}".format(num) for num in self.Data)
@@ -220,56 +219,56 @@ typedef struct
 } VSCAN_FILTER;
 '''
 
-#// If the function succeeds, the return value is greater zero (handle)
-#// If the function fails, the return value is one of VSCAN_STATUS
+# // If the function succeeds, the return value is greater zero (handle)
+# // If the function fails, the return value is one of VSCAN_STATUS
 VSCAN_Open = vs_can_api.VSCAN_Open
 VSCAN_Open.argtypes = [ctypes.c_char_p, ctypes.c_uint32]
 VSCAN_Open.restype = VSCAN_HANDLE
-#// If the function succeeds, the return value is greater zero (handle)
-#// If the function fails, the return value is one of VSCAN_STATUS
-#VSCAN_HANDLE VSCAN_Open(CHAR *SerialNrORComPortORNet, DWORD Mode);
-#// The return value is one of VSCAN_STATUS
+# // If the function succeeds, the return value is greater zero (handle)
+# // If the function fails, the return value is one of VSCAN_STATUS
+# VSCAN_HANDLE VSCAN_Open(CHAR *SerialNrORComPortORNet, DWORD Mode);
+# // The return value is one of VSCAN_STATUS
 
 VSCAN_Close = vs_can_api.VSCAN_Close
 VSCAN_Close.argtypes = [VSCAN_HANDLE]
 VSCAN_Close.restype = VSCAN_STATUS
-#// The return value is one of VSCAN_STATUS
-#VSCAN_STATUS VSCAN_Close(VSCAN_HANDLE Handle);
-#// The return value is one of VSCAN_STATUS
+# // The return value is one of VSCAN_STATUS
+# VSCAN_STATUS VSCAN_Close(VSCAN_HANDLE Handle);
+# // The return value is one of VSCAN_STATUS
 
-#// The return value is one of VSCAN_STATUS
+# // The return value is one of VSCAN_STATUS
 VSCAN_Ioctl = vs_can_api.VSCAN_Ioctl
 VSCAN_Ioctl.argtypes = [VSCAN_HANDLE, ctypes.c_uint32, ctypes.c_void_p]
 VSCAN_Ioctl.restype = VSCAN_STATUS
-#VSCAN_STATUS VSCAN_Ioctl(VSCAN_HANDLE Handle, DWORD Ioctl, VOID *Param);
+# VSCAN_STATUS VSCAN_Ioctl(VSCAN_HANDLE Handle, DWORD Ioctl, VOID *Param);
 
-#// The return value is one of VSCAN_STATUS
+# // The return value is one of VSCAN_STATUS
 VSCAN_Flush = vs_can_api.VSCAN_Flush
 VSCAN_Flush.argtypes = [VSCAN_HANDLE]
 VSCAN_Flush.restype = VSCAN_STATUS
-#VSCAN_STATUS VSCAN_Flush(VSCAN_HANDLE Handle);
+# VSCAN_STATUS VSCAN_Flush(VSCAN_HANDLE Handle);
 
-#// The return value is one of VSCAN_STATUS
+# // The return value is one of VSCAN_STATUS
 VSCAN_Write = vs_can_api.VSCAN_Write
 VSCAN_Write.argtypes = [VSCAN_HANDLE, ctypes.POINTER(VSCAN_MSG), ctypes.c_uint32, ctypes.POINTER(DWORD)]
 VSCAN_Write.restype = VSCAN_STATUS
-#VSCAN_STATUS VSCAN_Write(VSCAN_HANDLE Handle, VSCAN_MSG *Buf, DWORD Size, DWORD *Written);
+# VSCAN_STATUS VSCAN_Write(VSCAN_HANDLE Handle, VSCAN_MSG *Buf, DWORD Size, DWORD *Written);
 
-#// The return value is one of VSCAN_STATUS
+# // The return value is one of VSCAN_STATUS
 VSCAN_Read = vs_can_api.VSCAN_Read
 VSCAN_Read.argtypes = [VSCAN_HANDLE, ctypes.POINTER(VSCAN_MSG), ctypes.c_uint32, ctypes.POINTER(DWORD)]
 VSCAN_Read.restype = VSCAN_STATUS
-#VSCAN_STATUS VSCAN_Read(VSCAN_HANDLE Handle, VSCAN_MSG *Buf, DWORD Size, DWORD *Read);
+# VSCAN_STATUS VSCAN_Read(VSCAN_HANDLE Handle, VSCAN_MSG *Buf, DWORD Size, DWORD *Read);
 
-#// The return value is one of VSCAN_STATUS
-#don't implemented in Python
-#ifdef WIN32
-#VSCAN_STATUS VSCAN_SetRcvEvent(VSCAN_HANDLE Handle, HANDLE Event);
-#else
-#VSCAN_STATUS VSCAN_SetRcvEvent(VSCAN_HANDLE Handle, sem_t *Event);
+# // The return value is one of VSCAN_STATUS
+# don't implemented in Python
+# ifdef WIN32
+# VSCAN_STATUS VSCAN_SetRcvEvent(VSCAN_HANDLE Handle, HANDLE Event);
+# else
+# VSCAN_STATUS VSCAN_SetRcvEvent(VSCAN_HANDLE Handle, sem_t *Event);
 ##endif
 
-#// No return value for this function
+# // No return value for this function
 VSCAN_GET_ERROR_MAX_STRINGSIZE = 255
 VSCAN_GetErrorString = vs_can_api.VSCAN_GetErrorString
 VSCAN_GetErrorString.argtypes = [
@@ -277,15 +276,13 @@ VSCAN_GetErrorString.argtypes = [
 ]
 VSCAN_Read.restype = None
 
-#VOID VSCAN_GetErrorString(VSCAN_STATUS Status, CHAR *String, DWORD MaxLen);
+
+# VOID VSCAN_GetErrorString(VSCAN_STATUS Status, CHAR *String, DWORD MaxLen);
 
 
 # Own VSCAN_Exception class
 class VSCANException(Exception):
     pass
-
-
-
 
 
 class VSCAN():
@@ -297,7 +294,8 @@ class VSCAN():
     def open(self, port_com, mode):
         status = VSCAN_Open(ctypes.c_char_p(port_com.encode('utf-8')), mode)
         if status < 0:
-            raise VSCANException("<Error> Can't open CAN: status = {}({})".format(status, self.get_error_string(status)))
+            raise VSCANException(
+                "<Error> Can't open CAN: status = {}({})".format(status, self.get_error_string(status)))
         return status
 
     # Close CAN device. Ur Cap.
@@ -350,7 +348,7 @@ class VSCAN():
             mes.Data[i] = data[i]
         mes.Flags = flags
         mes.Timestamp = timestamp
-        return mes                 #self.write_mes(mes, flush)
+        return mes  # self.write_mes(mes, flush)
 
     # Write proxy. Can message forms inside function
     def write(self, frame_id, data, data_size=None, flags=VSCAN_FLAGS_EXTENDED, timestamp=0, flush=True):
@@ -445,7 +443,6 @@ def test_get_error_string():
 
 
 def can_self_test():
-
     test_get_error_string()
 
     version = VSCAN.get_api_version()
@@ -470,7 +467,6 @@ def can_self_test():
     mes = can_bus.read()
     print(mes)
 
-
     status = can_bus.close()
     if status < 0:
         print("<Error> Close: status = {}".format(status))
@@ -479,7 +475,8 @@ def can_self_test():
 
 
 def test_identification():
-    ID = VSCANIdentification( )
+    ID = VSCANIdentification()
+
 
 def test_data_transmit():
     version = VSCAN.get_api_version()
@@ -514,7 +511,6 @@ def test_data_transmit():
         print("<Error> Close: status = {}".format(status))
     else:
         print("<Success> Close: status = {}".format(status))
-
 
 
 if __name__ == "__main__":

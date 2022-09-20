@@ -1,99 +1,54 @@
 """
 VSCAN Interface for SD IMA BK.
 """
-
-from typing import Type, Any, Optional, Tuple
-from enum import Enum
 import inspect
-from contextlib import contextmanager
-
-import copy
-import sys
-import io
-import time
 import logging
-
-if sys.version_info >= (3, 9):
-    from collections.abc import Generator
-else:
-    from typing import Generator
+from enum import Enum
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-try:
-    import vs_can_lib
-except ImportError:
-    logger.warning(
-        "You can't use this back-end without the vs_can_lib module."
-    )
-    serial = None
 
 class SDIMABDKError(Exception):
-    """Base class for all CAN related exceptions.
-    If specified, the error code is automatically appended to the message:
-    >>> # With an error code (it also works with a specific error):
-    >>> error = SDIMABDKError(message="Failed to do the thing", error_code=42)
-    >>> str(error)
-    'Failed to do the thing [Error Code 42]'
-    >>>
-    >>> # Missing the error code:
-    >>> plain_error = SDIMABDKError(message="Something went wrong ...")
-    >>> str(plain_error)
-    'Something went wrong ...'
-    :param error_code:
-        An optional error code to narrow down the cause of the fault
-    :arg error_code:
-        An optional error code to narrow down the cause of the fault
+    """
+    A custom exception class.
     """
 
     def __init__(
-        self,
-        message: str = "",
-        error_code: Optional[int] = None,
+            self,
+            message: str = "",
+            error_code: Optional[int] = None,
     ) -> None:
         self.error_code = error_code
         super().__init__(
             message if error_code is None else f"{message} [code: {error_code}]"
         )
 
-class SDIMABDKOperationError(Exception):
+
+class SDIMABDKOperationError(SDIMABDKError):
     """
-    Indicates that SDIMABDK encountered an error while operating.
+    This class is used to raise an error when an operation is not supported by the SDIMABDK Library.
     """
     pass
 
-@contextmanager
-def error_check(
-    error_message: Optional[str] = None,
-    exception_type: Type[SDIMABDKError] = SDIMABDKOperationError,
-) -> Generator[None, None, None]:
-    """Catches any exceptions and turns them into the new type while preserving the stack trace."""
-    try:
-        yield
-    except Exception as error:  # pylint: disable=broad-except
-        if error_message is None:
-            raise exception_type(str(error)) from error
-        else:
-            raise exception_type(error_message) from error
 
-
-
-class SDIMABDKBus:
+class VSCANId:
     """
     SD IMA BK bus.
     """
 
-    # the message structure with the bit position and the amount of bits.
-    class __MESSAGE_STRUCTURE(Enum):
-        RCI = (0, 2)
-        SID = (1, 7)
-        S_FID = (2, 7)
-        P = (3, 1)
-        L = (4, 1)
-        S = (5, 1)
-        FID = (6, 7)
-        LCC = (7, 3)
-        UNK = (8, 3)
+    # the message structure.
+    # element = (pos, bit count, test value)
+    class MessageStructure(Enum):
+        RCI = (0, 2, 1)
+        SID = (1, 7, 1)
+        S_FID = (2, 7, 121)
+        P = (3, 1, 1)
+        L = (4, 1, 1)
+        S = (5, 1, 1)
+        FID = (6, 7, 121)
+        LCC = (7, 3, 6)
+        UNK = (8, 3, 0)
 
     _REPLY = 0
     _REQUEST = 1
@@ -116,74 +71,30 @@ class SDIMABDKBus:
         'REQUEST': 1,
     }
 
-
-    class Status():
-        LCC = 2  # #define STATUS_LCC    	  NOC_LCC
-        FID = 120  # функция ПМУ
-        TEST = 121
-
-    class LCC():
-        EEC = 0  # исключительное событие
-        NOC = 2  # нормальная операция
-        NSC = 4  # сервис шины
-        UDC = 5  # пользовательский канал
-        TMC = 6  # тестирование и поддержка
-        FMC = 7  # канал миграции
-
-    class FID():
-        MFC = 0  # Multicast Function Code ID
-        IMA = 15  # Integral Modular Avionics
-        TEST = 121
-        UTDS = 126  # Upload Target or Download Source
-        TTM = 127  # Temporary Test and Maintenance
-
-    class ID_POS():
-        RCI = 0
-        SID = 2
-        S_FID = 9
-        P = 16
-        L = 17
-        S = 18
-        R = 18
-        C_FID = 19
-        LCC = 26
-
-    class MessageType():
-        CLIENT = 1
-        SERVER = 0
-
-    class Privacy():
-        value = 1
-
-    class LocalBus():
-        value = 1
-
     @staticmethod
     def make_bits(
             count: Optional[int] = 1,
             value: Optional[Any] = None
     ) -> bytes:
         """
-        `make_bits` takes an integer `count` and a value and returns a list of `count` copies of `value`
+        `make_bits` takes an integer `count` and a value and returns a list of bits
         :param count: The number of bits to make
         :type count: Optional[int]
         :param value: The value to be repeated
         :type value: Optional[Any]
         """
-        return bytes(value.to_bytes(count, byteorder='little'))
-
+        return bytes(value.to_bytes(count, byteorder='little'), )
 
     def __init__(
             self,
-            rci: Optional[str] = None,
-            sid: Optional[str] = None,
-            s_fid: Optional[str] = None,
-            p: Optional[str] = None,
-            l: Optional[str] = None,
-            s: Optional[str] = None,
-            c_fid: Optional[str] = None,
-            lcc: Optional[str] = None,
-            *args: Any,
+            rci: Optional[int] = None,
+            sid: Optional[int] = None,
+            s_fid: Optional[int] = None,
+            p: Optional[int] = None,
+            l: Optional[int] = None,
+            s: Optional[int] = None,
+            c_fid: Optional[int] = None,
+            lcc: Optional[int] = None,
     ) -> None:
         """
         :param str rci:
@@ -208,24 +119,95 @@ class SDIMABDKBus:
 
         Leave initializer empty to make a test connection.
         """
-        if len([x for x in locals().values()
-                if (not callable(x)) and
-                (not isinstance(x, SDIMABDKBus)) and
-                (x is not None)]) != len(args):
 
-                raise SDIMABDKOperationError('Arguments provided are None or not valid.')
+        # magic internal python stuff.
+        sig, init_locals = inspect.signature(self.__init__), locals()
+        params = [init_locals[param.name] for param in sig.parameters.values()]
+        # если в инит засунули 8 null'ов - значит мы хотим сделать тест.
+        test_mode = params.count(None) == 8
+        if not test_mode and None in params:
+            raise SDIMABDKOperationError('Invalid parameters!')
 
-        if vs_can_lib is None:
-            raise ImportError('The VSCAN Library is not installed.')
+        self.message_id = []
+
+        # read information about the msgid from __MESSAGE_STRUCTURE class.
+        for bit in self.MessageStructure:
+            id = self.message_id
+            at, bit_count, test_val = bit.value
+            id.insert(at,
+                self.make_bits(bit_count, test_val if test_mode else params[at - 1])
+            )
+
+        self.message_id[8] = None
+
+    def __repr__(self):
+        return ''.join([f'{str(f"{bit.name} [{bit.value[0]}]").ljust(10, " ")}: '
+                        f'{self.message_id[bit.value[0]]}\n'
+                        for bit in self.MessageStructure])
 
 
+#print(VSCANId())
 
 
+class PSDone(Enum):
+    PS_LOADED: 1
+    PS_NOT_LOADED: 0
 
 
+class PSError(Enum):
+    PS_NO_ERROR: 0
+    PS_ERROR: 1
 
+class VIPStatus(Enum):
+    VIP_VALID: 0
+    VIP_FAILED: 1
 
+class PowerStatuses(Enum):
+    PG_VCC_3V3: 0
+    PG_VCC_GTX_1V8: 1
+    PG_VCC_1V8: 2
+    PG_VCC_1V2: 3
+    CORE_START: 4
+    PG_VTT_DDR: 5
+    PG_VDD_DDR_1V2: 6
+    PG_VCCPS_PLL: 7
+    PG_VMGTAVTT: 8
+    PG_VMGTAVCC: 9
+    PG_MGTRAVCC: 10
+    PG_VPP: 11
+    PG_VCCPSDDR_PLL: 12
+    PG_VCCIO_1V8: 13
+    PS_DONE: (14, PSDone)
+    PS_ERR_OUT: (15, PSError)
+    BAT_INACTIVE: 16
+    VIP_FAIL: (17, VIPStatus)
 
+# class PMUStatus(Enum):
+#     #   ИМЯ    РАЗМЕР, СМЕЩЕНИЕ
+#     PMU_VERSION: (0, 4)
+#     POWER_STATUS: (1, 4, PowerStatuses)
 
+from dataclasses import dataclass
 
-SDIMABDKBus('1','2','3','4')
+class StatusElement:
+    def __init__(self, offset, size):
+        self._offset = offset
+        self._size = size
+
+    def set(self, elements: Optional[Any]):
+        self._elements = elements
+
+@dataclass
+class PMUStatus(object):
+    Version: StatusElement(0, 4)
+    PowerStatus: StatusElement(1, 4).set(PowerStatuses)
+
+    def __post_init__(self):
+        try:
+            self.Version = int(self.Version)
+        except (ValueError, TypeError):
+            # could not convert age to an integer
+            self.Version = None
+
+status = PMUStatus()
+print(status.Version)
