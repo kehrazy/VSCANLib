@@ -153,6 +153,7 @@ class Element:
             size,
             fields: Optional[list[str, int]] = None
     ):
+        self._element_list = []
         __offsets = []
         self._offset = offset
         if type(size) == list:
@@ -183,6 +184,7 @@ class Element:
 
     def elements(self):
         return self._elements
+
 
 # todo: make a element.add method.
 class PMUStatuses:
@@ -231,5 +233,6 @@ class PMUStatuses:
         Element(14, [(2, 'ADC_CALIBR'), (2, 'E_ADC_CALIBR_1')]),
         Element(15, [(2, 'E_ADC_CALIBR_0'), (2, 'RESERVED'), (4, 'BATTERY_POWER_STATUS')]),
     ]
+
 
 print(PMUStatuses.Temperature[2].elements())
