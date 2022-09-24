@@ -184,7 +184,7 @@ class Element:
     def elements(self):
         return self._elements
 
-
+# todo: make a element.add method.
 class PMUStatuses:
     Version = Element(0, 4)
     Power = Element(1, 4, [
@@ -232,7 +232,4 @@ class PMUStatuses:
         Element(15, [(2, 'E_ADC_CALIBR_0'), (2, 'RESERVED'), (4, 'BATTERY_POWER_STATUS')]),
     ]
 
-
-s = PMUStatuses
-
-print(s.Temperature[2].elements())
+print(PMUStatuses.Temperature[2].elements())
