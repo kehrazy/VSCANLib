@@ -4,7 +4,7 @@ VSCAN Interface for SD IMA BK.
 import inspect
 import logging
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -142,76 +142,166 @@ class VSCANId:
                         for bit in self.MessageStructure])
 
 
+# class TableHelpers:
+#     class Element:
+#         def __init__(
+#                 self,
+#                 offset,
+#                 pad_one,
+#                 pad_two: list[Union[tuple[range, str], tuple[int, str]]] = None
+#         ):
+#             self._element_list = []
+#             self._elements = []
+#             self._offset = offset
+#             self._pad_type = type(pad_one)
+#             self._pad = pad_one
+#             self._fields = pad_two
+#             self.parse_element()
+#
+#         def parse_element(self):
+#             if self._pad_type == list:
+#                 # parsing something like Element(1, [(1, 'SOMETHING'), (2, 'SOMETHING_TWO')])
+#                 for _, val in enumerate(self._pad):
+#                     region_size, field, *_ = val
+#                     self._element_list.append((self._offset, region_size, field))
+#             else:
+#                 if self._fields:
+#                     # parsing something like Element(1, 2, [(0, 'SOMETHING'), (1, 'SOMETHING_TWO')])
+#                     for _, val in enumerate(self._fields):
+#                         region_size, field, *_ = val
+#                         self._element_list.append(
+#                             (self._offset,
+#                              tuple(region_size) if isinstance(region_size, range) else region_size,
+#                              field)
+#                         )
+#                 else:
+#                     # parsing something like Element(0, 1)
+#                     self._element_list.append((self._offset, self._pad))
+#
+#         def get(self):
+#             return self._element_list
+#
+#         def find(self, offset_to_find, bit_to_find: Optional[Any] = None):
+#             to_ret = []
+#             for element in self._element_list:
+#                 offset, bit, *_ = element
+#                 if offset == offset_to_find:
+#                     if bit_to_find and bit == bit_to_find:
+#                         return element
+#                     to_ret.append(element)
+#
+#             return tuple(to_ret) if len(to_ret) > 0 else None
+#
+#     class Elements(Element):
+#         def __init__(self,
+#                      elements: list,
+#                      offset: Optional[Any] = None,
+#                      pad_one: Optional[Any] = None  # python syntax bullshit
+#                      ):
+#             super().__init__(offset, pad_one)
+#             self.__elements = elements
+#
+#         def find(self, offset_to_find):
+#             for element in self.__elements:
+#                 print(element.get())
+#                 [offset, *_], *_ = element.get()
+#                 if offset == offset_to_find:
+#                     return element.get()
+#             return None
+
 class Element:
     """
-    An element class for PMUStatus table.
+
+    [ word offset | internal offset | group name | bit offset* | field name* | element type ].
+
     """
-
-    def __init__(
-            self,
-            offset,
-            size,
-            fields: Optional[list[str, int]] = None
+    element_type = None
+    elements = []
+    def __init__(self,
+                offset: Optional[int] = None,
+                size_or_list: Optional = None,
+                name: Optional[str] = '',
+                fields=None
     ):
-        self._element_list = []
-        __offsets = []
-        self._offset = offset
-        if type(size) == list:
-            self._elements = []
-            for _, val in enumerate(size):
-                # _ - индекс, val[1] - поле, val[0] - размер области
-                self._elements.insert(_, val[1])
-                __offsets.insert(_, val[0])
-            self._elements = list(zip(__offsets, self._elements))
-        else:
-            self._elements = list(zip(range(size), [[None for _ in range(8)] for _ in range(size)]))
-        if fields is not None:
-            self._elements = [[None for _ in range(8)] for _ in range(size)]
-            for idx, el in enumerate(list(fields)):
-                # idx - index, el[0] - поле, el[1] - номер бита
-                if not type(el[1]) == list:
-                    a, b = divmod(int(el[1]), 8)
-                    # print(self._elements[a][1])
-                    self._elements[a][b] = el[0]
-                    __offsets.insert(int(el[1]), el[1])
-                else:
-                    # el[1] - range.
-                    for i in el[1]:
-                        a, b = divmod(int(i), 8)
-                        self._elements[a][b] = el[0]
-                        __offsets.insert(int(i), i)
-            self._elements = list(zip(__offsets, self._elements))
+        self.element_type = None
+        if fields is None:
+            fields = []
+        self.word_offset = offset
+        self.size_or_list = size_or_list
+        self.name = name
+        self.fields = fields
+        self.parse_addition()
 
-    def elements(self):
-        return self._elements
+    def get_type(self):
+        if not self.fields and not isinstance(self.size_or_list, list):
+            self.element_type = 1
+        if self.fields:
+            self.element_type = 2
+        elif isinstance(self.size_or_list, list):
+            self.element_type = 3
+
+    def parse_addition(self):
+        """
+        parse the table Element constructor.
+        """
+        self.get_type()
+        # not in python 3.9: match self.table_type:
+        if self.element_type == 1:
+            Element.elements.append((self.word_offset, self.size_or_list, self.name, self.element_type))
+        elif self.element_type == 2:
+            for field in self.fields:
+                offset, name = field
+                Element.elements.append(
+                    (self.word_offset, self.size_or_list, self.name,
+                     list(offset) if isinstance(offset, range) else offset, name,
+                     self.element_type)
+                )
+        elif self.element_type == 3:
+            for field in self.size_or_list:
+                Element.elements.append((self.word_offset, field[0], field[1], self.element_type))
+        return Element.elements
 
 
-# todo: make a element.add method.
-class PMUStatuses:
-    Version = Element(0, 4)
-    Power = Element(1, 4, [
-        ('PG_VCC_3V3', 0),
-        ('PG_VCC_GTX_1V8', 1),
-        ('PG_VCC_1V8', 2),
-        ('PG_VCC_1V2', 3),
-        ('CORE_START', 4),
-        ('PG_VTT_DDR', 5),
-        ('PG_VDD_DDR_1V2', 6),
-        ('PG_VCCPS_PLL', 7),
-        ('PG_VMGTAVTT', 8),
-        ('PG_VMGTAVCC', 9),
-        ('PG_MGTRAVCC', 10),
-        ('PG_VPP', 11),
-        ('PG_VCCPSDDR_PLL', 12),
-        ('PG_VCCIO_1V8', 13),
-        ('PS_DONE', 14),
-        ('PS_ERR_OUT', 15),
-        ('BAT_INACTIVE', 16),
-        ('VIP_FAIL', 17),
-        ('RESERVED', list(range(19, 32)))
-    ])
+class TableHelper(Element):
+    def __init__(self):
+        super().__init__()
+        self.elements = Element.elements
 
-    TelemetricData = [
+    def get(self, offset: Optional[int] = None, bit: Optional[int] = None, name: Optional[str] = ''):
+        for element in self.elements:
+            temp_el = list(element)[:-1]
+            element_type = temp_el[-1]
+            if temp_el[0] == offset:
+                return element
+            if element_type == 2 and len([x for x in temp_el[3] if x == bit]) > 0:
+                return element
+            if name == temp_el[2]:
+                return element
+
+
+class PMUStatuses(TableHelper):
+    Table = [
+        Element(0, 4, 'Version'),
+        Element(1, 4, 'Power', [
+            (0, 'PG_VCC_3V3'),
+            (1, 'PG_VCC_GTX_1V8'),
+            (2, 'PG_VCC_1V8'),
+            (3, 'PG_VCC_1V2'),
+            (4, 'CORE_START'),
+            (5, 'PG_VTT_DDR'),
+            (6, 'PG_VDD_DDR_1V2'),
+            (7, 'PG_VCCPS_PLL'),
+            (8, 'PG_VMGTAVTT'),
+            (9, 'PG_VMGTAVCC'),
+            (10, 'PG_MGTRAVCC'),
+            (11, 'PG_VPP'),
+            (12, 'PG_VCCPSDDR_PLL'),
+            (13, 'PG_VCCIO_1V8'),
+            (14, 'PS_DONE'),
+            (15, 'PS_ERR_OUT'),
+            (16, 'BAT_INACTIVE'),
+            (17, 'VIP_FAIL'),
+            (list(range(19, 32)), 'RESERVED')]),
         Element(2, [(2, 'E_ADC_27V_VOLT'), (2, 'E_ADC_27V_CUR')]),
         Element(3, [(2, 'E_ADC_CAP_VOLT'), (2, 'TOTAL_POWER')]),
         Element(4, [(2, 'ADC_5V_VOLT'), (2, 'ADC_5V_CUR')]),
@@ -221,18 +311,158 @@ class PMUStatuses:
         Element(8, [(2, 'MEAS_GTX_VOLT'), (2, 'MEAS_GTX_CUR')]),
         Element(9, [(2, 'MEAS_DDR4_VOLT'), (2, 'MEAS_DDR4_CUR')]),
         Element(10, [(2, 'TOTAL_MUEP_POWER'), (2, 'RESERVED')]),
-    ]
-
-    Temperature = [
         Element(11, [(1, 'MEAS_VIP_TEMP'), (1, 'E_ADC_VIP_TEMP'), (1, 'E_ADC_LT8210_TEMP'), (1, 'E_ADC_LT8705_TEMP')]),
         Element(12, [(1, 'MEAS_PMU_TEMP'), (1, 'MEAS_MUEP_TEMP'), (1, 'MEAS_MHPO_TEMP'), (1, 'TERMO_PMU_AVBL')]),
-        Element(13, [(1, 'MEAS_FPGA_TEMP'), (1, 'MEAS_LTM_1_TEMP'), (1, 'MEAS_LTM_2_TEMP'), (1, 'TERMO_MUEP_AVBL')]),
     ]
 
-    CalibrationValues = [
-        Element(14, [(2, 'ADC_CALIBR'), (2, 'E_ADC_CALIBR_1')]),
-        Element(15, [(2, 'E_ADC_CALIBR_0'), (2, 'RESERVED'), (4, 'BATTERY_POWER_STATUS')]),
-    ]
+    # TelemetricData = TableHelpers.Elements([
+    #         TableHelpers.Element(2, [(2, 'E_ADC_27V_VOLT'), (2, 'E_ADC_27V_CUR')]),
+    #         TableHelpers.Element(3, [(2, 'E_ADC_CAP_VOLT'), (2, 'TOTAL_POWER')]),
+    #         TableHelpers.Element(4, [(2, 'ADC_5V_VOLT'), (2, 'ADC_5V_CUR')]),
+    #         TableHelpers.Element(5, [(2, 'ADC_9V_VOLT'), (2, 'ADC_9V_CUR')]),
+    #         TableHelpers.Element(6, [(2, 'MEAS_CORE_VOLT'), (2, 'MEAS_CORE_CUR')]),
+    #         TableHelpers.Element(7, [(2, 'MEAS_3V3_VOLT'), (2, 'MEAS_3V3_CUR')]),
+    #         TableHelpers.Element(8, [(2, 'MEAS_GTX_VOLT'), (2, 'MEAS_GTX_CUR')]),
+    #         TableHelpers.Element(9, [(2, 'MEAS_DDR4_VOLT'), (2, 'MEAS_DDR4_CUR')]),
+    #         TableHelpers.Element(10, [(2, 'TOTAL_MUEP_POWER'), (2, 'RESERVED')]),
+    #     ])
+
+    # Power = Element(1, 4, [
+    #     (0, 'PG_VCC_3V3'),
+    #     (1, 'PG_VCC_GTX_1V8'),
+    #     (2, 'PG_VCC_1V8'),
+    #     (3, 'PG_VCC_1V2'),
+    #     (4, 'CORE_START'),
+    #     (5, 'PG_VTT_DDR'),
+    #     (6, 'PG_VDD_DDR_1V2'),
+    #     (7, 'PG_VCCPS_PLL'),
+    #     (8, 'PG_VMGTAVTT'),
+    #     (9, 'PG_VMGTAVCC'),
+    #     (10, 'PG_MGTRAVCC'),
+    #     (11, 'PG_VPP'),
+    #     (12, 'PG_VCCPSDDR_PLL'),
+    #     (13, 'PG_VCCIO_1V8'),
+    #     (14, 'PS_DONE'),
+    #     (15, 'PS_ERR_OUT'),
+    #     (16, 'BAT_INACTIVE'),
+    #     (17, 'VIP_FAIL'),
+    #     (list(range(19, 32)), 'RESERVED')
+    # ])
 
 
-print(PMUStatuses.Temperature[2].elements())
+#     SomeData = TableHelpers.Elements([
+#         TableHelpers.Element(2, [(1, 'BEBRA'), (2, 'BEBRA')]),
+#         TableHelpers.Element(3, [(2, 'E_ADC_CAP_VOLT'), (2, 'TOTAL_POWER')]),
+#         TableHelpers.Element(4, [(2, 'ADC_5V_VOLT'), (2, 'ADC_5V_CUR')]),
+#         TableHelpers.Element(5, [(2, 'ADC_9V_VOLT'), (2, 'ADC_9V_CUR')]),
+#     ])
+#
+#     TelemetricData = TableHelpers.Elements([
+#         TableHelpers.Element(2, [(2, 'E_ADC_27V_VOLT'), (2, 'E_ADC_27V_CUR')]),
+#         TableHelpers.Element(3, [(2, 'E_ADC_CAP_VOLT'), (2, 'TOTAL_POWER')]),
+#         TableHelpers.Element(4, [(2, 'ADC_5V_VOLT'), (2, 'ADC_5V_CUR')]),
+#         TableHelpers.Element(5, [(2, 'ADC_9V_VOLT'), (2, 'ADC_9V_CUR')]),
+#         TableHelpers.Element(6, [(2, 'MEAS_CORE_VOLT'), (2, 'MEAS_CORE_CUR')]),
+#         TableHelpers.Element(7, [(2, 'MEAS_3V3_VOLT'), (2, 'MEAS_3V3_CUR')]),
+#         TableHelpers.Element(8, [(2, 'MEAS_GTX_VOLT'), (2, 'MEAS_GTX_CUR')]),
+#         TableHelpers.Element(9, [(2, 'MEAS_DDR4_VOLT'), (2, 'MEAS_DDR4_CUR')]),
+#         TableHelpers.Element(10, [(2, 'TOTAL_MUEP_POWER'), (2, 'RESERVED')]),
+#     ])
+#
+#     Temp = TableHelpers.Elements([
+#         TableHelpers.Element(11, [(1, 'MEAS_VIP_TEMP'), (1, 'E_ADC_VIP_TEMP'), (1, 'E_ADC_LT8210_TEMP'),
+#                                   (1, 'E_ADC_LT8705_TEMP')]),
+#         TableHelpers.Element(12, [
+#             (1, 'MEAS_PMU_TEMP'),
+#             (1, 'MEAS_MUEP_TEMP'),
+#             (1, 'MEAS_MHPO_TEMP'),
+#             (1, 'TERMO_PMU_AVBL')
+#         ]),
+#         TableHelpers.Element(13, [
+#             (1, 'MEAS_FPGA_TEMP'),
+#             (1, 'MEAS_LTM_1_TEMP'),
+#             (1, 'MEAS_LTM_2_TEMP'),
+#             (1, 'TERMO_MUEP_AVBL')
+#         ]),
+#     ])
+#
+#     CalibrationValues = TableHelpers.Elements([
+#         TableHelpers.Element(14, [(2, 'ADC_CALIBR'), (2, 'E_ADC_CALIBR_1')]),
+#         TableHelpers.Element(15, [(2, 'E_ADC_CALIBR_0'), (2, 'RESERVED'), (4, 'BATTERY_POWER_STATUS')]),
+#     ])
+#
+#
+# class MUEPStatuses:
+#     State = TableHelpers.Element(0, 2, [
+#         (0, 'M_READY'),
+#         (1, 'M_MUEP_FAULT'),
+#         (2, 'M_GLOBAL_SMPE_FAULT'),
+#         (3, 'M_GLOBAL_MHPO_FAULT'),
+#         (4, 'M_GLOBAL_SSD0_FAULT'),
+#         (5, 'M_GLOBAL_SSD1_FAULT'),
+#         (6, 'M_GLOBAL_SATA_FAULT'),
+#         (7, 'M_GLOBAL_FCRT_FAULT'),
+#         (8, 'M_PELTIE_ON'),
+#         (range(9 - 10), 'M_SMPE_INACTIVE'),
+#         (range(11 - 12), 'M_MHPO_INACTIVE'),
+#         (13, 'M_TECH_UART_ON'),
+#         (14, 'M_TECH_ETHERNET_ON'),
+#         (15, 'RESERVED'),
+#     ])
+#
+#     WorkStatus = TableHelpers.Element(2, 2, [
+#         (range(0, 2), 'M_MODE'),
+#         (3, 'M_WDT_ON'),
+#         (4, 'M_MHPO_AVBL'),
+#         (5, 'M_SMPE_AVBL'),
+#         (6, 'M_SOFT_CRC_MUEP_ERR'),
+#         (7, 'M_SOFT_CRC_PMU_ERR'),
+#         (range(8, 15), 'M_START_CAUSE')
+#     ])
+#
+#     CycleCounter = TableHelpers.Element(4, 4, [
+#         (range(0 - 31), 'M_COUNTER_SOFT')
+#     ])
+#
+#     CycleCounter1 = TableHelpers.Element(8, 4, [
+#         (range(0, 31), 'M_COUNTER_STATE')
+#     ])
+#
+#     Time = TableHelpers.Element(12, 4, [
+#         (range(0, 31), 'TIME')
+#     ])
+#
+#     MUEPSoftVersion = TableHelpers.Element(16, 4, [
+#         (range(0, 31), 'M_MUEP_SOFT_VER')
+#     ])
+#
+#     MUEPHWVersion = TableHelpers.Element(20, 4, [
+#         (range(0, 31), 'M_MUEP_HW_VER')
+#     ])
+#
+#     PMUSoftVersion = TableHelpers.Element(24, 4, [
+#         (range(0, 31), 'M_PMU_SOFT_VER')
+#     ])
+#
+#     MUEPSoftCRC = TableHelpers.Element(28, 4, [
+#         (range(0, 31), 'M_MUEP_SOFT_CRC')
+#     ])
+#
+#     MUEPHwCRC = TableHelpers.Element(32, 4, [
+#         (range(0, 31), 'M_MUEP_HW_CRC')
+#     ])
+#
+#     PMUSoftCRC = TableHelpers.Element(36, 4, [
+#         (range(0, 31), 'M_PMU_SOFT_CRC')
+#     ])
+#
+#     M_NUM_FC_RT_CONFIG = TableHelpers.Element(40, 2, [
+#         (range(0, 15), 'M_NUM_FC_RT_CONFIG')
+#     ])
+#
+#     M_VER_FC_RT_CONFIG = TableHelpers.Element(42, 2, [
+#         (range(0, 15), 'M_VER_FC_RT_CONFIG')
+#     ])
+
+PMU = PMUStatuses()
+print(PMU.get(name='Power'))
