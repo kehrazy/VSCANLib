@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*- #
 import ctypes
 import time
-from enum import Enum
-import string
+import queue
 from load_lib import vs_can_api
 
-# port_ip = "10.7.6.70:2001"
-PORT_IP = "192.168.254.254:2001"
+port_ip = "10.7.6.70:2001"
+# port_ip = "192.168.254.254:2001"
 
 # vs_can_api = ctypes.cdll.LoadLibrary(r"E:\WORK\Repository\Megapolis\PO_CAN_LIBRARY\Win64\vs_can_api.dll")
 
@@ -23,7 +22,7 @@ VSCAN_DEBUG_MODE_FILE = 2  # define VSCAN_DEBUG_MODE_FILE               (void*)2
 # Debug Level
 VSCAN_DEBUG_NONE = 0  # define VSCAN_DEBUG_NONE                        (void*)0
 VSCAN_DEBUG_LOW = -1  # define VSCAN_DEBUG_LOW                         (void*)-1
-VSCAN_DEBUG_MID = -51  # define VSCAN_DEBUG_MID                         (void*)-51
+VSCAN_DEBUG_MID = 51  # define VSCAN_DEBUG_MID                         (void*)-51
 VSCAN_DEBUG_HIGH = -101  # define VSCAN_DEBUG_HIGH                        (void*)-101
 
 # Status / Errors
@@ -42,9 +41,9 @@ VSCAN_ERR_NOT_SUPPORTED = VSCAN_DEBUG_LOW - 10
 VSCAN_ERR_GOTO_ERROR = VSCAN_DEBUG_HIGH  # Debug Level High
 
 # Mode
-VSCAN_MODE_NORMAL = 0
-VSCAN_MODE_LISTEN_ONLY = 1
-VSCAN_MODE_SELF_RECEPTION = 2
+VSCAN_MODE_NORMAL = 0  # Обычный режим
+VSCAN_MODE_LISTEN_ONLY = 1  # Только просулшивание
+VSCAN_MODE_SELF_RECEPTION = 2  # Сам послал сам принял
 
 # Speed
 VSCAN_SPEED_1M = 8
@@ -134,7 +133,7 @@ typedef struct
 class VSCAN_MSG(ctypes.Structure):
     _fields_ = [("Id", ctypes.c_uint32), ("Size", ctypes.c_uint8), ("Data", ctypes.c_uint8 * 8),
                 ("Flags", ctypes.c_uint8), ("Timestamp", ctypes.c_uint16)]
-
+    
     def __repr__(self):  # Print CAN message content
         return (
             "Id = {:08X}, Size = {}, Flags = {}, Timestamp = {}, Data = [{}]".format(
@@ -285,234 +284,78 @@ class VSCANException(Exception):
     pass
 
 
-# class that can't be modified.
-class const(object):
-    def __setattr__(self, key, value):
-        pass  # constants can not be changed.
+class VSCAN():
+    def __init__(self, port_com, mode, can_speed, emulation=True, emulation_read_mes_queue=queue.Queue(),
+                 emulation_write_machine=None):
+        """
 
-
-class VSCAN:
-    def __init__(self, port_com, mode, can_speed):
-        self.can_descr = self.open(port_com, mode)
+        :param port_com: IP-адресс:Port или имя виртуального COM-порта
+        :param mode: Режим работы см. перечесление Mode
+        :param can_speed: Скорость работы см. перечисление Speed
+        :param emulation: Эмулировать чтения/записи
+        :param emulation_read_mes: Очередь с сообщениями для чтения
+        """
+        self.emulation = emulation
+        self.port_com = port_com
+        self.mode = mode
+        if emulation:  # Режим эмуляции
+            self.mes_for_write = queue.Queue()
+            self.mes_for_read = emulation_read_mes_queue
+            self.emulation_write_machine = emulation_write_machine
+            
+            self.open = self.open_emu
+            self.close = self.close_emu
+            self.set_speed = self.set_speed_emu
+            self.write_mes = self.write_mes_emu
+            self.read_mes = self.read_mes_emu
+            self.flush = self.flush_emu
+            
+            self.write_s = self.write_s_emu
+            self.read_mes_s = self.read_mes_s_emu
+            
+            # ToDo
+            # 1. Почему-то при проверке на закоротке при отправке сразу нескольких сообщений при чтении появляются лишние дублирующие сообщения
+            # 2. На будущее реализовать вызов VSCAN_IOCTL_SET_KEEPALIVE, если потребуется делать сервер, чтобы востоянно поддерживать связь с NetCan
+        
+        self.can_descr = self.open(self.port_com, self.mode)
         self.set_speed(can_speed)
-
-    @staticmethod
-    def print_version():
-        """
-        function to print the version of the VSCAN-API.
-        """
-        v = VSCAN.get_api_version()
-        print(f"VSCAN-API Version {v.Major}.{v.Minor}.{v.SubMinor}")
-
-    # > This class represents a VSCAN message
-    class VSCANMessage:
-        # > The `Parameters` class is an enumeration of the parameters that can be passed to the `get_data` function
-        class Parameters(Enum):
-            MEM = 0
-            SPI = 1
-            I2C = 2
-            ADC = 3
-            SYS = 4
-            PIN = 5
-            WORD = 6
-
-        # > The `Functions` class is an enumeration of the functions that can be used in the `Function` class
-        class Functions(Enum):
-            READ = 0
-            WRITE = 1
-            SET = 2
-            RESET = 3
-
-        # возможные сочетания функций и параметров.
-        ftp_dict: dict[Functions, list[Parameters]] = {Functions.READ: list(Parameters),
-                                                       Functions.WRITE: [Parameters.MEM, Parameters.I2C,
-                                                                         Parameters.SPI],
-                                                       Functions.SET: [Parameters.PIN],
-                                                       Functions.RESET: [Parameters.PIN]}
-        i2c_response = 0
-
-        expected_response_length: dict[Functions, dict[Parameters, int]] = {
-            Functions.READ: {Parameters.MEM: 4,
-                             Parameters.SPI: 2,
-                             Parameters.I2C: i2c_response,
-                             Parameters.ADC: 5},
-            Functions.WRITE: {Parameters.MEM: 1,
-                              Parameters.SPI: 2,
-                              Parameters.I2C: 1,
-                              },
-            Functions.SET: {Parameters.PIN: 1}
-        }
-
-        def get_response_length(self):
-            """
-            returns the length of the response
-            """
-            return (self.expected_response_length[self.function])[self.parameter]
-
-        @property
-        def verify_message(self) -> bool:
-            """
-            > This function verifies the VSCAN message
-            """
-            if self.parameter not in self.ftp_dict[self.function]:
-                raise VSCANException(f'<Error> verify_instruction: cant request {self.parameter} by {self.function}')
-
-            # убедимся, что каждый байт инструкции - hex от 00 до FF.
-            def is_hex(str_byte):
-                return set(str_byte).issubset(string.hexdigits)
-
-            for byte in self.message.split(' '):
-                if not is_hex(byte) or len(byte) != 2:
-                    raise VSCANException(f'<Error> Invalid request! {byte} is not a proper hex byte!')
-
-            return True
-
-        def form_message(self) -> str:
-            if self.request:
-                def form_instruction_byte(func, param):
-                    # byte =    hex(function)         +              hex(parameter << 4)
-                    return str(int(f'{func.value:X}') + int(f'{int(bin(param.value << 4), 2):X}'))  # переписать
-                    # убедиться, что в первом байте два чара
-
-                return str(
-                    f'{form_instruction_byte(self.function, self.parameter).zfill(2)} {self.request}')  # переделать.
-
-            # - Бэрримор, что у меня хлюпает в реквесте?
-            # - [None, ''], сэр!
-            # - [None, '']?! Что они там делают?!
-            # - Хлюпают, сэр...
-            raise VSCANException('<Error> form_data: invalid request!')
-
-        def __init__(self, function: Functions, parameter: Parameters, request: str):
-            """
-            > This function takes in a function, parameter, and request and returns a message
-
-            param function: The function you want to call
-            type function: VSCANMessage.Functions
-            param parameter: The parameter that the function is being called with
-            type parameter: VSCANMessage.Parameters
-            param request: The request that was sent to the server
-            type request: str
-            """
-            self.function = function
-            self.parameter = parameter
-            self.request = request
-            self.message = self.form_message()
-            self.is_valid_message = self.verify_message
-
-        def __str__(self):
-            return (f"{'-' * 10}\n"
-                    f'function: {self.function}\n'
-                    f'parameter: {self.parameter}\n'
-                    f'request: {self.request}\n'
-                    f'message: {self.message}\n'
-                    f'is_valid_message: {self.is_valid_message}\n')
-
-        def __repr__(self):
-            return self.message
-
-    # > The VSCANId class is used to represent a VSCAN Message ID.
-    class VSCANId:
-        class Parameters:
-            class RCI(Enum):
-                RCI_FIRST = 1
-                RCI_SECOND = 2
-
-            class SID(Enum):
-                REPLY = 0
-                REQUEST = 1
-
-            class Status(Enum):
-                LCC = 2  # #define STATUS_LCC    	  NOC_LCC
-                FID = 120  # функция ПМУ
-                TEST = 121
-
-            class LCC(Enum):
-                EEC = 0  # исключительное событие
-                NOC = 2  # нормальная операция
-                NSC = 4  # сервис шины
-                UDC = 5  # пользовательский канал
-                TMC = 6  # тестирование и поддержка
-                FMC = 7  # канал миграции
-
-            class FID(Enum):
-                MFC = 0  # Multicast Function Code ID
-                IMA = 15  # Integral Modular Avionics
-                TEST = 121
-                UTDS = 126  # Upload Target or Download Source
-                TTM = 127  # Temporary Test and Maintenance
-
-            class ID_POS(Enum):
-                RCI = 0
-                SID = 2
-                S_FID = 9
-                P = 16
-                L = 17
-                S = 18
-                R = 18
-                C_FID = 19
-                LCC = 26
-
-            class MessageType(Enum):
-                CLIENT = 1
-                SERVER = 0
-
-            class Privacy(const):
-                value = 1
-
-            class LocalBus(const):
-                value = 1
-
-        def __init__(self):
-            def make_bit(count: int, value):
-                return bytes(value.to_bytes(count, byteorder='little'))
-
-            parameters = self.Parameters
-            self.message_id = [None for _ in range(9)]  # list of the message id
-            self.rci = self.message_id[0] = make_bit(2,
-                                                     parameters.RCI.RCI_FIRST.value)  # rci. @doc: RCI_1 - 1, RCI_2 - 2
-            self.sid = self.message_id[1] = make_bit(7, 1)  # вроде 1?
-            self.server_fid = self.message_id[2] = make_bit(7, parameters.Status.TEST.value)  # 120 / 121 ?
-            self.privacy = self.message_id[3] = make_bit(1, parameters.Privacy.value)
-            self.local_bus = self.message_id[4] = make_bit(1, parameters.LocalBus.value)
-            self.msg_type = self.message_id[5] = make_bit(1, parameters.MessageType.CLIENT.value)  # msg_type
-            self.client_fid = self.message_id[6] = make_bit(7, parameters.FID.TEST.value)  # client_fid
-            self.lcc = self.message_id[7] = make_bit(3, parameters.LCC.TMC.value)  # lcc
-            self.empty = self.message_id[8] = ''  # ?
-
-        def __str__(self):
-            def fmt_string(prefix, bits):  # much python, very wow
-                # message with spaces on the left, bytes formatted like {bits: something, width 50} | int: some bytes to integer form
-                return (f'{prefix.ljust(15, " ")}|   '
-                        f'bits: {str(bits):{int(50 - len(prefix.ljust(15, " ")))}} | '
-                        f'int: {int.from_bytes(bits, "little")}\n')
-
-            return (f"{'-' * 10}\n"
-                    f"{fmt_string('RCI [0-1]', self.rci)}"
-                    f"{fmt_string('SID [2-8]', self.sid)}"
-                    f"{fmt_string('Server FID', self.server_fid)}"
-                    f"{fmt_string('Privacy', self.privacy)}"
-                    f"{fmt_string('Local Bus', self.local_bus)}"
-                    f"{fmt_string('Message Type', self.msg_type)}"
-                    f"{fmt_string('Client FID', self.client_fid)}"
-                    f"{fmt_string('LCC', self.lcc)}\n"
-                    f'ID: {self.message_id}\n')
-
+    
+    def GetDescr(self):
+        return self.can_descr
+    
     # Open CAN Device
     def open(self, port_com, mode):
         status = VSCAN_Open(ctypes.c_char_p(port_com.encode('utf-8')), mode)
         if status < 0:
-            raise VSCANException(f"<Error> Can't open CAN: status = {status}({self.get_error_string(status)})")
-        print('CAN device opened.')
+            raise VSCANException(
+                "<Error> Can't open CAN: status = {}({})".format(status, self.get_error_string(status)))
         return status
-
+    
+    def open_emu(self, port_com, mode):
+        """
+        Виртуальная функция открытия NetCAN
+        :param port_com:
+        :param mode:
+        :return:
+        """
+        print("open_emu port_com = {}, mode = {}".format(port_com, mode))
+        return VSCAN_ERR_OK
+    
     # Close CAN device. Ur Cap.
     def close(self):
-        status = VSCAN_ERR_OK  # VSCAN_Close(self.can_descr)
+        status = VSCAN_Close(self.can_descr)
         if status != VSCAN_ERR_OK:
-            raise VSCANException(f"<Error> close: status = {status}({self.get_error_string(status)})")
+            raise VSCANException("<Error> close: status = {}({})".format(status, self.get_error_string(status)))
         return status
-
+    
+    def close_emu(self):
+        """
+        Виртуальная функция закрытия NetCAN
+        :return:
+        """
+        print("close_emu")
+        return VSCAN_ERR_OK
+    
     # Get API Version in VSCAN_API_VERSION structure (version.Major, version.Minor, version.SubMinor)
     @staticmethod
     def get_api_version():
@@ -520,29 +363,54 @@ class VSCAN:
         p_version = ctypes.pointer(version)
         VSCAN_Ioctl(0, VSCAN_IOCTL_GET_API_VERSION, p_version)
         return version
-
+    
     # Set CAN Speed
     def set_speed(self, can_speed):
         status = VSCAN_Ioctl(self.can_descr, VSCAN_IOCTL_SET_SPEED, can_speed)
         if status != VSCAN_ERR_OK:
-            raise VSCANException(f"<Error> set_speed: status = {status}({self.get_error_string(status)})")
-        # return - redundant?
-
+            raise VSCANException("<Error> set_speed: status = {}({})".format(status, self.get_error_string(status)))
+        return VSCAN_ERR_OK
+    
+    def set_speed_emu(self, can_speed):
+        """
+        Вирттуальная функция
+        :return:
+        """
+        print("set_speed_emu can_speed = {}".format(can_speed))
+        return VSCAN_ERR_OK
+    
     # Write CAN message
     def write_mes(self, mes, flush=True):
-        written = DWORD(0)
-        status = VSCAN_Write(self.can_descr, ctypes.pointer(mes), 1, ctypes.pointer(written))
-        print(f"can_write_mes status = {status}, Written = {written.value}")
+        Written = DWORD(0)
+        status = VSCAN_Write(self.can_descr, ctypes.pointer(mes), 1, ctypes.pointer(Written))
+        # print("can_write_mes status = {}, Written = {}".format(status, Written.value))
         if status != VSCAN_ERR_OK:
-            raise VSCANException(f"<Error> write_mes: status = {status}({self.get_error_string(status)})")
-        if written.value != 1:
+            raise VSCANException("<Error> write_mes: status = {}({})".format(status, self.get_error_string(status)))
+        if Written.value != 1:
             raise VSCANException(
-                f"<Error> write_mes: some thing wrong with trancieved written.value ({written.value}) != 1 ")
-
+                "<Error> write_mes: some thing wrong with trancieve Written.value ({}) != 1 ".format(Written.value)
+            )
+        
         if flush:
             self.flush()
-        return written.value
-
+        return Written.value
+    
+    def write_mes_emu(self, mes, flush=True, debug=False):
+        """
+        Функция эмуляции записи для тестирования внешней логики
+        :param mes: записываемое сообщение
+        :param flush: скинуть сообщения в шину из буфура
+        :return: количество записываемых сообщений
+        """
+        if debug:
+            print("write_mes_emu mes = {}".format(mes))
+        self.mes_for_write.put(mes)
+        if self.mode == VSCAN_MODE_SELF_RECEPTION:
+            self.mes_for_read.put(mes)
+        if self.emulation_write_machine:  # Вызывать функцию - реализующие сложные события по записи
+            self.emulation_write_machine(self, mes)
+        return 1
+    
     @staticmethod
     def form_message(frame_id, data, data_size=None, flags=VSCAN_FLAGS_EXTENDED, timestamp=0):
         mes = VSCAN_MSG()
@@ -550,187 +418,281 @@ class VSCAN:
         if not data_size:
             data_size = len(data)
             if data_size > 8:
-                raise VSCANException(f"<Error> Data size == {data_size} > 8. Not valid for CAN")
+                raise VSCANException("<Error> Data size == {} > 8. Not valid for CAN".format(data_size))
         mes.Size = data_size
         for i in range(data_size):
             mes.Data[i] = data[i]
         mes.Flags = flags
         mes.Timestamp = timestamp
-        print(mes)
-        return mes  # self.write_mes(mes, flush)
-
-    # Write proxy. Can message forms inside function
-    def write(self, frame_id, data, data_size=None, flags=VSCAN_FLAGS_EXTENDED, timestamp=0, flush=True):
-        mes = VSCAN_MSG()
-        mes.Id = frame_id
-        if not data_size:
-            data_size = len(data)
-            if data_size > 8:
-                raise VSCANException(f"<Error> Data size == {data_size} > 8. Not valid for CAN")
-        mes.Size = data_size
-        for i in range(data_size):
-            mes.Data[i] = data[i]
-        mes.Flags = flags
-        mes.Timestamp = timestamp
-        mes = self.form_message(frame_id, data, data_size, flags, timestamp)
-        print("CAN write MES: {}".format(mes))
-        return self.write_mes(mes, flush)
-
-    # Read message
-    def read_mes(self):
-        mes = VSCAN_MSG()
-        read = DWORD(0)
-        status = VSCAN_Read(self.can_descr, ctypes.pointer(mes), 1, ctypes.pointer(read)) or 0  # fixes todo.
-        # if status is None:  # Todo WTF? It return None in success
-        #     status = 0
-
-        if status != VSCAN_ERR_OK:
-            raise VSCANException(f"<Error> read_mes: status = {status}({self.get_error_string(status)})")
-
-        if read.value == 0:
-            mes = None
-        elif read.value != 1:
-            raise VSCANException(f"<Error> read_mes: something wrong with Readed.value ({read.value}) != 1 != 0")
         return mes
-
+    
+    # Write proxy. Can message forms inside function
+    def write(self, frame_id, data, data_size=None, flags=VSCAN_FLAGS_EXTENDED, timestamp=0, flush=True, debug=False):
+        mes = VSCAN_MSG()
+        mes = self.form_message(frame_id, data, data_size, flags, timestamp)
+        if debug:
+            print("CAN write MES: {}".format(mes))
+        return self.write_mes(mes, flush)
+    
+    def write_s(self, message_list, flush=True):
+        """
+        Отправить список сообщений
+        :param message_list: список с сформированными сообщениями типа VSCAN_MES
+        :param flush: очищать буфер
+        :return:
+        """
+        
+        # _fields_ = [("Id", ctypes.c_uint32), ("Size", ctypes.c_uint8), ("Data", ctypes.c_uint8 * 8),
+        #            ("Flags", ctypes.c_uint8), ("Timestamp", ctypes.c_uint16)]
+        Written = DWORD(0)
+        message_num = len(message_list)
+        messages = (VSCAN_MSG * message_num)()
+        print("write_s: message_list = {}".format(message_list))
+        i = 0
+        for m in message_list:
+            messages[i].Id = m.Id
+            messages[i].Size = m.Size
+            messages[i].Data = m.Data
+            messages[i].Flags = m.Flags
+            messages[i].Timestamp = m.Timestamp
+            i += 1
+        status = VSCAN_Write(self.can_descr, ctypes.pointer(messages[0]), message_num, ctypes.pointer(Written))
+        # print("write_s status = {}, Written = {}".format(status, Written.value))
+        if status != VSCAN_ERR_OK:
+            raise VSCANException("<Error> write_s: status = {}({})".format(status, self.get_error_string(status)))
+        if Written.value != message_num:
+            raise VSCANException(
+                "<Error> write_s: some thing wrong with trancieve Written.value ({}) != 1 ".format(Written.value)
+            )
+        
+        if flush:
+            self.flush()
+        return Written.value
+    
+    def write_s_emu(self, message_list, flush=True, debug=False):
+        """
+        Функция эмуляция записи многих сообщений
+        :param message_list: список с сообщениями типа VSCAN_MES
+        :param flush:
+        :return:
+        """
+        if debug:
+            print("write_mes_emu mes = {}".format(message_list))
+        for mes in message_list:
+            self.mes_for_write.put(mes)
+            if self.mode == VSCAN_MODE_SELF_RECEPTION:
+                self.mes_for_read.put(mes)
+            if self.emulation_write_machine:  # Вызывать функцию - реализующие сложные события по записи
+                self.emulation_write_machine(self, mes)
+        
+        return len(message_list)
+    
     # Read proxy, message in dict
     def read(self):
         mes = self.read_mes()
-        if mes is not None:
+        if mes != None:
             return {"": mes.Id, "Data": list(mes.Data)[:mes.Size]}
         return mes
-
+    
+    # Read message
+    def read_mes(self, client_fid: int = None):
+        mes = VSCAN_MSG()
+        Readed = DWORD(0)
+        status = VSCAN_Read(self.can_descr, ctypes.pointer(mes), 1, ctypes.pointer(Readed))
+        if status is None:  # Todo WTF? It return None in success
+            status = 0
+        
+        if status != VSCAN_ERR_OK:
+            raise VSCANException("<Error> read_mes: status = {}({})".format(status, self.get_error_string(status)))
+        
+        if Readed.value == 0:
+            mes = None
+        elif Readed.value != 1:
+            raise VSCANException("<Error> read_mes: some thing wrong Readed.value ({}) != 1 != 0".format(Readed.value))
+        
+        if client_fid is None:
+            return mes
+        else:
+            if mes.Id & (client_fid << 18) == client_fid << 18: # если сообщение с нашим client fid,
+                return mes # возвращаем наше сообщение
+            else:
+                mes = None # сообщение не наше, и работать с ним не нужно
+                return mes
+    
+    def read_mes_emu(self, debug=False):
+        """
+        Функция виртуального чтения из CAN шины. Возвращает сообщение из очереди
+        :return:
+        """
+        try:
+            mes = self.mes_for_read.get(block=False)
+        except queue.Empty:
+            mes = None
+        if debug:
+            print("read_mes_emu mes = {}".format(mes))
+        return mes
+    
+    def read_mes_s(self, mes_num, debug=False):
+        """
+        Функция единовременного получения списка из сообщений
+        :param mes_num: Количество ожидаемых сообщений
+        :return: список полученных сообщений
+        """
+        messages = (VSCAN_MSG * mes_num)()
+        Readed = DWORD(0)
+        status = VSCAN_Read(self.can_descr, ctypes.pointer(messages[0]), mes_num, ctypes.pointer(Readed))
+        if status is None:  # Todo WTF? It return None in success
+            status = 0
+        
+        if debug:
+            print("read_mes_s: status = {}, Readed = {}".format(status, Readed.value, messages))
+        
+        if status != VSCAN_ERR_OK:
+            raise VSCANException("<Error> read_mes_s: status = {}({})".format(status, self.get_error_string(status)))
+        
+        if Readed.value == 0:
+            messages_list = None
+        else:
+            messages_list = list(messages[:Readed.value])
+        
+        return messages_list
+    
+    def read_mes_s_emu(self, mes_num, debug=False):
+        """
+        Функция-эмулятор единовременного получения списка из сообщений
+        :param mes_num: Количество ожидаемых сообщений
+        :return: список полученных сообщений
+        """
+        messages_list = []
+        for i in range(mes_num):
+            try:
+                mes = self.mes_for_read.get(block=False)
+                messages_list.append(mes)
+            except queue.Empty:
+                break
+            
+            if debug:
+                print("read_mes_s_emu mes = {}".format(mes))
+        
+        if len(messages_list) == 0:
+            return None
+        
+        return messages_list
+    
     def flush(self):
         status = VSCAN_Flush(self.can_descr)
         if status != VSCAN_ERR_OK:
-            raise VSCANException(f"<Error> read_mes: status = {status}({self.get_error_string(status)})")
+            raise VSCANException("<Error> read_mes: status = {}({})".format(status, self.get_error_string(status)))
         return status
-
+    
+    def flush_emu(self):
+        print("flush_emu")
+        return VSCAN_ERR_OK
+    
     @staticmethod
     def get_error_string(status):
-        # form error string by status code
+        # Form error string by status code
         string_buf = (ctypes.c_char * VSCAN_GET_ERROR_MAX_STRINGSIZE)()
         p_string_buf = ctypes.pointer(string_buf)
         VSCAN_GetErrorString(status, p_string_buf, VSCAN_GET_ERROR_MAX_STRINGSIZE)
         return string_buf.value
 
-    # @todo: test this
-    def read_mes_s(self):
-        test_mes = (VSCAN_MSG * 5)()
-        read = DWORD(0)
-        status = VSCAN_Read(self.can_descr, ctypes.pointer(test_mes[0]), 1, ctypes.pointer(read))
-        mes = test_mes[0]
-        print(f"status = {status}, read = {read.value}")
-        return mes
-
-    def write_test_many(self):
-        """
-        class VSCAN_MSG(ctypes.Structure):
-            _fields_ = [("Id", ctypes.c_uint32),
-                        ("Size", ctypes.c_uint8),
-                        ("Data", ctypes.c_uint8 * 8),
-                        ("Flags", ctypes.c_uint8),
-                        ("Timestamp", ctypes.c_uint16)]
-        """
-        written = DWORD(0)
-        test_mes = (VSCAN_MSG * 5)()
-        test_mes[0].Id = 0xFF
-        test_mes[0].Size = 0x8
-        for i in range(8):
-            test_mes[0].Data[i] = i
-        test_mes[0].Flags = VSCAN_FLAGS_STANDARD
-        test_mes[0].Timestamp = 0xFF
-        status = VSCAN_Write(self.can_descr, ctypes.pointer(test_mes[0]), 1, ctypes.pointer(written))
-        print("status = {status}, Written = {Written.value}")
-        return status
-
 
 # test for VSCAN.get_error_string
 def test_get_error_string():
     for i in range(-20, 10):  # noqa: WPS432
-        print(f"error_code = {i}. Error string = {VSCAN.get_error_string(i)}")
+        print("error_code = {}. Error string = {}".format(i, VSCAN.get_error_string(i)))
 
 
 def can_self_test():
-    # test_get_error_string()
-
-    port = PORT_IP
+    test_get_error_string()
+    
+    version = VSCAN.get_api_version()
+    print("VSCAN-API Version {}.{}.{}".format(version.Major, version.Minor, version.SubMinor))
+    
+    port = port_ip
     can_bus = VSCAN(port, VSCAN_MODE_SELF_RECEPTION, VSCAN_SPEED_1M)
-
+    
     # Write some messages
-    can_bus.write(frame_id=0xFF, data=[1, 2, 3, 4, 5, 8])  # noqa: WPS432
-
+    #can_bus.write(frame_id=0xFF, data=[1, 2, 3, 4, 5, 8])  # noqa: WPS432
+    
     time.sleep(0.5)  # Дождаться получения сообщения
-
+    
     mes = can_bus.read_mes()
     print(mes)
-
+    
     # Write some messages
     can_bus.write(frame_id=0xFF, data=[1, 2, 3])  # noqa: WPS432
-
+    
     time.sleep(0.5)  # Дождаться получения сообщения
-
+    
     mes = can_bus.read()
     print(mes)
-
+    
     status = can_bus.close()
-    print(f'<{"Error" if status < 0 else "Success"}> Close: status = {status}')
+    if status < 0:
+        print("<Error> Close: status = {}".format(status))
+    else:
+        print("<Success> Close: status = {}".format(status))
 
 
 def test_data_transmit():
-    VSCAN.print_version()
-
-    port = PORT_IP
+    version = VSCAN.get_api_version()
+    print("VSCAN-API Version {}.{}.{}".format(version.Major, version.Minor, version.SubMinor))
+    
+    port = port_ip
     can_bus = VSCAN(port, VSCAN_MODE_SELF_RECEPTION, VSCAN_SPEED_1M)
-
+    
     counter = 0
-
+    
     TEST_LENGTH = 1000
     for i in range(0, TEST_LENGTH):
-        dlc = (i % 8 + 1) & 0xFF
-        fid = (i % 8 + i % 0xFF) & 0xFF
-        a_data = []
-        for j in range(0, dlc):
+        DLC = (i % 8 + 1) & 0xFF
+        Id = (i % 8 + i % 0xFF) & 0xFF
+        aData = []
+        for j in range(0, DLC):
             if i < 255:
                 tmp_val = i
-            elif (i > 255) and (i < 512):
+            elif ((i > 255) and (i < 512)):
                 tmp_val = 255 - i
             else:
                 tmp_val = i % 2 + i % 255
-            a_data.append((tmp_val + j) & 0xFF)
+            aData.append((tmp_val + j) & 0xFF)
         # def write(self, frame_id, data, data_size=None, flags=VSCAN_FLAGS_EXTENDED, timestamp=0):
-        can_bus.write(frame_id=fid, data=a_data, data_size=dlc)
+        can_bus.write(frame_id=Id, data=aData, data_size=DLC)
         time.sleep(0.1)  # Дождаться получения сообщения
         if counter % 10 == 0:
             print(counter)
         counter += 1
-
+    
     status = can_bus.close()
-    print(f'<{"Error" if status < 0 else "Success"}> Close: status = {status}')
+    if status < 0:
+        print("<Error> Close: status = {}".format(status))
+    else:
+        print("<Success> Close: status = {}".format(status))
 
 
-def check_vscan_msg():
-    VSCAN.print_version()
-    port = PORT_IP
+def self_test():
+    version = VSCAN.get_api_version()
+    print("VSCAN-API Version {}.{}.{}".format(version.Major, version.Minor, version.SubMinor))
+    
+    port = port_ip
     can_bus = VSCAN(port, VSCAN_MODE_SELF_RECEPTION, VSCAN_SPEED_1M)
-    msg = VSCAN.VSCANMessage(VSCAN.VSCANMessage.Functions.WRITE, VSCAN.VSCANMessage.Parameters.MEM, 'DE AD BE EF')
-    testid = VSCAN.VSCANId()
-    can_bus.write(frame_id=testid, data=msg)
-    time.sleep(0.5)  # Дождаться получения сообщения
-    mes = can_bus.read_mes()
+    can_bus.write(
+        [b'\x01\x00', b'\x01\x00\x00\x00\x00\x00\x00', b'y\x00\x00\x00\x00\x00\x00', b'\x01', b'\x01', b'\x01',
+         b'y\x00\x00\x00\x00\x00\x00', b'\x06\x00\x00', b'\x00\x00'],
+        data=['00 0a 00 00 00'.split(' ')],
+        data_size=len(['00 0a 00 00 00'.split(' ')])
+    )
+    time.sleep(0.2)
+    mes = can_bus.read()
     print(mes)
     status = can_bus.close()
     if status < 0:
-        print(f"<Error> Close: status = {status}")
+        print("<Error> Close: status = {}".format(status))
     else:
-        print(f"<Success> Close: status = {status}")
-
-
-def check_vscan_id():
-    VSCAN.print_version()
-    some_id = VSCAN.VSCANId()
-    print(some_id)
+        print("<Success> Close: status = {}".format(status))
 
 
 if __name__ == "__main__":
-    check_vscan_msg()
+    self_test()
