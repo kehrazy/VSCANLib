@@ -123,14 +123,14 @@ class VSCANMessage:
 
 class VSCANId:
 	class MessageStructure(Enum):
-		BUS_NUMBER = (0, 2, 1)
+		BUS_NUMBER = (0, 1, 1)
 		SERVER_ID = (1, 7, 1)
-		SERVER_FUNC_ID = (8, 7, 121)
-		PRIVACY = (15, 1, 1)
-		LOCAL_BUS = (16, 1, 1)
-		MSG_TYPE = (17, 1, 1)
-		CLIENT_FUNC_ID = (18, 7, 121)
-		LOGICAL_CHANNEL_NUM = (25, 3, 6)
+		SERVER_FUNC_ID = (15, 1, 121)
+		PRIVACY = (16, 1, 1)
+		LOCAL_BUS = (17, 1, 1)
+		MSG_TYPE = (18, 1, 1)
+		CLIENT_FUNC_ID = (19, 7, 121)
+		LOGICAL_CHANNEL_NUM = (26, 2, 6)
 		UNK = (28, 3, 0)
 	def __init__(
 			self,
@@ -157,11 +157,16 @@ class VSCANId:
 		# read information about the msgid from __MESSAGE_STRUCTURE class.
 		for bit in self.MessageStructure:
 			bit_pos, _bit_count, test_val = bit.value
-			print(f'{bin(test_val)[2:]}({test_val})@{bit_pos}')
-			self.message_id = self.message_id | (test_val << bit_pos)
-			print(f'{"".join([str(x).ljust(1) for x in bin(self.message_id)[2:].zfill(32)])}')
-		
-		print(f'python bin: {bin(self.message_id)}')
+			# print(f'{bin(0x1BFFF020)[2:]}')
+			# self.message_id = (int(bin(self.message_id), 2) | int(bin((test_val << bit_pos)), 2))
+			# print(f'{"".join([str(x).ljust(1) for x in bin(self.message_id)[2:]])}')
+			# print(' ' * bit_pos + '^')
+			# print(' ' * bit_pos + f'{bin(test_val)[2:]}({test_val})@{bit_pos}')
+			# Todo: this
+			
+			
+			print('-'*25 + '\n')
+		#print(f'{bin(self.message_id)[2:]}')
 		self.message_id = ctypes.c_uint32(self.message_id).value
 	
 	def test_bit(self):
@@ -171,6 +176,7 @@ class VSCANId:
 	def __str__(self):
 		return str(self.message_id)
 def test():
-	print(VSCANMessage(VSCANMessage.Functions.READ,VSCANMessage.Parameters.MEM,0xDEADBEEF).message)
-	#print(f'uint32_t: {VSCANId()}')
+	#print(VSCANMessage(VSCANMessage.Functions.READ,VSCANMessage.Parameters.WORD,0x000000).message)
+	print(f'my: {len(bin(VSCANId().message_id)[2:])} {bin(VSCANId().message_id)[2:]}')
+	print(f'og: {(len(bin(0x1BFFF020)[2:]))} {bin(0x1BFFF020)[2:]}')
 test()

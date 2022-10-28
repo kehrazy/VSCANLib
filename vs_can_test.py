@@ -26,6 +26,8 @@ def form_send_id(func, param, addr):
 
 id = form_send_id(functions.READ.value, parameters.MEM.value , 0xdeadbeef)
 
+mes = VSCAN.form_message(0x60, [0x00,0x00,0x00])
+a = VSCAN.
 
 print(mes)
 
